@@ -10,6 +10,8 @@ import { CommentList } from "@/components/comment-list";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import type { VideoAnalysis } from "@/types";
+import { toast } from "sonner";
+import { getCachedAnalysis, setCachedAnalysis } from "@/lib/cache/analysis-cache";
 
 export default function Home() {
   const [analysis, setAnalysis] = useState<VideoAnalysis | null>(null);
@@ -20,6 +22,17 @@ export default function Home() {
     setIsLoading(true);
     setError(null);
     setAnalysis(null);
+
+    // Check cache first
+    const cached = getCachedAnalysis(url);
+    if (cached) {
+      setAnalysis(cached);
+      setIsLoading(false);
+      toast.success("Loaded from cache", { duration: 2000 });
+      return;
+    }
+
+    toast.loading("Analyzing video comments...", { id: "analysis" });
 
     try {
       const response = await fetch("/api/analyze", {
@@ -37,8 +50,18 @@ export default function Home() {
 
       const data: VideoAnalysis = await response.json();
       setAnalysis(data);
+
+      // Cache the result
+      setCachedAnalysis(url, data);
+
+      toast.success(
+        `Analysis complete! Analyzed ${data.comments.length} comments.`,
+        { id: "analysis" }
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      const errorMessage = err instanceof Error ? err.message : "An error occurred";
+      setError(errorMessage);
+      toast.error(errorMessage, { id: "analysis" });
     } finally {
       setIsLoading(false);
     }

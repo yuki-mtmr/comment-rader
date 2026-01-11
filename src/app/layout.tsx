@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { ErrorBoundary } from "@/components/error-boundary";
+import { Toaster } from "@/components/ui/sonner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,14 +29,17 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <header className="fixed top-0 left-0 right-0 z-50 glass-dark">
-          <div className="container mx-auto px-4 py-4">
-            <h1 className="text-2xl font-bold gradient-text">CommentRadar</h1>
-          </div>
-        </header>
-        <main className="container mx-auto px-4 pt-24 pb-12">
-          {children}
-        </main>
+        <ErrorBoundary>
+          <header className="fixed top-0 left-0 right-0 z-50 glass-dark">
+            <div className="container mx-auto px-4 py-4">
+              <h1 className="text-2xl font-bold gradient-text">CommentRadar</h1>
+            </div>
+          </header>
+          <main className="container mx-auto px-4 pt-24 pb-12">
+            {children}
+          </main>
+          <Toaster />
+        </ErrorBoundary>
       </body>
     </html>
   );
