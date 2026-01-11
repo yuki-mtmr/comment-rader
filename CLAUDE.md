@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Styling:** Tailwind CSS + Shadcn/UI (or Radix UI)
 - **Charts:** Recharts
 - **Backend:** Next.js API Routes / Server Actions
-- **Sentiment Analysis Engine:** OpenAI API (GPT-4o-mini) or Google Gemini API (Flash 1.5)
+- **Sentiment Analysis Engine:** Google Gemini API (2.0 Flash - recommended, free tier) or OpenAI API (GPT-4o-mini)
 - **Data Source:** YouTube Data API v3
 - **Animations:** Framer Motion (planned)
 
@@ -53,10 +53,15 @@ The LLM analyzes each comment and returns structured JSON with:
 
 ```bash
 NEXT_PUBLIC_YOUTUBE_API_KEY=AIzaSy...  # YouTube Data API v3 key
-OPENAI_API_KEY=sk-...                   # or Gemini API key
+LLM_ENGINE=gemini                       # "gemini" or "openai"
+GEMINI_API_KEY=AIzaSy...                # Google Gemini API key (recommended)
+# OPENAI_API_KEY=sk-...                 # OpenAI API key (alternative)
+USE_MOCK_ENGINE=true                    # true = mock data, false = real LLM
 ```
 
-See [docs/youtube_api_setup.md](docs/youtube_api_setup.md) for API key setup instructions.
+See setup guides:
+- [docs/gemini_api_setup.md](docs/gemini_api_setup.md) - Google Gemini API (recommended, free tier)
+- [docs/youtube_api_setup.md](docs/youtube_api_setup.md) - YouTube Data API v3
 
 ## Design Requirements
 
