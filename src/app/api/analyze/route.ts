@@ -48,6 +48,20 @@ export async function POST(request: NextRequest) {
     // Fetch video metadata
     const video = await youtubeClient.getVideo(videoId);
 
+    // Fetch transcript and generate summary for context
+    console.log(`[API] Fetching transcript for context...`);
+    const transcript = await youtubeClient.getTranscript(videoId);
+    video.transcript = transcript;
+
+    console.log(`[API] Generating context summary...`);
+    const summary = await engine.generateContextSummary({
+      title: video.title,
+      channelName: video.channelName,
+      description: video.description,
+      transcript: transcript,
+    });
+    console.log(`[API] Context ready: ${summary.slice(0, 100)}...`);
+
     // Fetch comments
     const maxComments = body.maxComments || 100;
     const comments = await youtubeClient.getComments(videoId, { maxComments });
@@ -57,6 +71,14 @@ export async function POST(request: NextRequest) {
         error: "No comments found for this video",
       }, { status: 404 });
     }
+
+    // Populate parentText for replies to provide context to the LLM
+    const commentMap = new Map(comments.map(c => [c.id, c.text]));
+    comments.forEach(c => {
+      if (c.parentId && commentMap.has(c.parentId)) {
+        c.parentText = commentMap.get(c.parentId);
+      }
+    });
 
     // Analyze comments in batches
     const batchSize = engine.getConfig().batchSize;
@@ -69,7 +91,9 @@ export async function POST(request: NextRequest) {
         comments: batch,
         videoContext: {
           title: video.title,
+          channelName: video.channelName,
           description: video.description,
+          summary: summary,
         },
       });
 

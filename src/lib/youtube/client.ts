@@ -4,6 +4,7 @@
  * Wrapper for YouTube API with proper error handling and rate limiting.
  */
 
+import { YoutubeTranscript } from "youtube-transcript";
 import type { YouTubeVideo, YouTubeComment, YouTubeAPIError } from "@/types";
 
 const YOUTUBE_API_BASE = "https://www.googleapis.com/youtube/v3";
@@ -125,6 +126,19 @@ export class YouTubeClient {
       publishedAt: snippet.publishedAt,
       description: snippet.description,
     };
+  }
+
+  /**
+   * Fetch video transcript (captions)
+   */
+  async getTranscript(videoId: string): Promise<string> {
+    try {
+      const transcript = await YoutubeTranscript.fetchTranscript(videoId);
+      return transcript.map(t => t.text).join(" ");
+    } catch (error) {
+      console.warn(`[YouTube] Could not fetch transcript for ${videoId}:`, error);
+      return "";
+    }
   }
 
   /**

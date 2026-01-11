@@ -19,7 +19,7 @@ import { SYSTEM_PROMPT, createBatchPrompt, createSingleCommentPrompt } from "@/l
 import { AnalysisError } from "@/types";
 
 const DEFAULT_CONFIG: AnalysisEngineConfig = {
-  batchSize: 50, // Increased to reduce total request count (RPM bottleneck)
+  batchSize: 10, // Reduced to improve attention and context accuracy
   maxComments: 500,
   timeoutMs: 30000,
 };
@@ -195,6 +195,33 @@ export class GeminiEngine implements AnalysisEngine {
       "GEMINI_BATCH_ERROR",
       lastError
     );
+  }
+
+  async generateContextSummary(video: { title: string; channelName: string; description?: string; transcript?: string }): Promise<string> {
+    const prompt = `
+    Analyze this YouTube video (Title, Description, and Transcript) to build a "Stance Profile" for sentiment analysis.
+
+    ### EXTRACT THE FOLLOWING:
+    1. CREATOR'S STANCE: What is their main message?
+    2. KEY VALUES: What does the creator value? (e.g., "action over talk", "honesty", etc.)
+    3. CRITICISM TARGETS: Who are the "Opponents"? What specific behaviors is the creator attacking? (e.g., "attacking people who only talk and don't act").
+    4. LABELS: List specific keywords or phrases the creator uses to describe their opponents.
+
+    Title: "${video.title}"
+    Creator: "${video.channelName}"
+    Transcript: "${video.transcript?.slice(0, 8000)}"
+
+    Return a 1-paragraph summary that explicitly defines these points so an analysis agent can use it to determine alignment.
+    Note: If the video is in Japanese, maintain the nuance of the specific terms used.
+    `;
+
+    try {
+      const result = await this.model.generateContent(prompt);
+      return result.response.text().trim();
+    } catch (error: any) {
+      console.error("[Gemini] Summary failed:", error.message);
+      return "Video context information could not be fully summarized.";
+    }
   }
 
   getConfig(): AnalysisEngineConfig {

@@ -14,6 +14,7 @@ export interface YouTubeVideo {
   commentCount: number;
   publishedAt: string;
   description?: string;
+  transcript?: string;
 }
 
 export interface YouTubeComment {
@@ -26,6 +27,7 @@ export interface YouTubeComment {
   publishedAt: string;
   updatedAt?: string;
   parentId?: string; // For replies
+  parentText?: string; // Content of the parent comment
 }
 
 // Sentiment Analysis Types
@@ -113,7 +115,9 @@ export interface BatchAnalysisRequest {
   comments: YouTubeComment[];
   videoContext?: {
     title: string;
+    channelName: string;
     description?: string;
+    summary?: string;
   };
 }
 

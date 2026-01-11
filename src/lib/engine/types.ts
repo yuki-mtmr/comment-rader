@@ -35,6 +35,11 @@ export interface AnalysisEngine {
   analyzeBatch(request: BatchAnalysisRequest): Promise<BatchAnalysisResponse>;
 
   /**
+   * Summarize video context for better comment analysis
+   */
+  generateContextSummary(video: { title: string; channelName: string; description?: string; transcript?: string }): Promise<string>;
+
+  /**
    * Get engine configuration
    */
   getConfig(): AnalysisEngineConfig;

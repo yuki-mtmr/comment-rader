@@ -78,6 +78,11 @@ export class MockEngine implements AnalysisEngine {
     };
   }
 
+  async generateContextSummary(video: { title: string; channelName: string; description?: string; transcript?: string }): Promise<string> {
+    await this.delay(500); // Simulate processing
+    return `[Mock] This video by ${video.channelName} titled "${video.title}" discussed several key points. The transcript suggests a ${video.transcript ? "detailed" : "basic"} analysis of the topic.`;
+  }
+
   getConfig(): AnalysisEngineConfig {
     return { ...this.config };
   }

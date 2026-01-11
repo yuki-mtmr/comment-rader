@@ -17,12 +17,12 @@ import { SYSTEM_PROMPT, createBatchPrompt, createSingleCommentPrompt } from "@/l
 import { AnalysisError } from "@/types";
 
 const DEFAULT_CONFIG: AnalysisEngineConfig = {
-    batchSize: 10, // Reduced to stay under Groq free tier TPM limits (6000/min)
+    batchSize: 20, // Increased for 70B which handles context better
     maxComments: 500,
     timeoutMs: 30000,
 };
 
-const DEFAULT_MODEL = "llama-3.1-8b-instant";
+const DEFAULT_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
 
 interface GroqResponse {
     id: number;
@@ -43,6 +43,44 @@ export class GroqEngine implements AnalysisEngine {
         this.client = new Groq({ apiKey });
     }
 
+    private parseJSON<T>(text: string): T {
+        let cleanText = text.trim();
+
+        // 1. Remove markdown code blocks
+        const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/i;
+        const match = cleanText.match(codeBlockRegex);
+        if (match && match[1]) {
+            cleanText = match[1].trim();
+        }
+
+        // 2. Extract JSON part if there is preamble
+        if (!cleanText.startsWith("[") && !cleanText.startsWith("{")) {
+            const startIndex = cleanText.search(/[\[\{]/);
+            const endIndex = Math.max(
+                cleanText.lastIndexOf("]"),
+                cleanText.lastIndexOf("}")
+            );
+            if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
+                cleanText = cleanText.slice(startIndex, endIndex + 1);
+            }
+        }
+
+        // 3. FIX COMMON LLM MISTAKES BEFORE PARSING
+        // a) Strip leading plus signs from numbers (e.g., +0.8 -> 0.8)
+        cleanText = cleanText.replace(/:\s*\+([0-9.]+)/g, ': $1');
+
+        // b) Fix quoted booleans (e.g., "isSarcasm": "false" -> "isSarcasm": false)
+        cleanText = cleanText.replace(/:\s*"(true|false)"/gi, (m, p1) => `: ${p1.toLowerCase()}`);
+
+        try {
+            return JSON.parse(cleanText);
+        } catch (error) {
+            console.error("Failed to parse Groq JSON. Raw text:", text.slice(0, 200));
+            console.error("Cleaned text:", cleanText.slice(0, 200));
+            throw new Error(`Failed to parse JSON response from Groq: ${error instanceof Error ? error.message : "Invalid syntax"}`);
+        }
+    }
+
     async analyzeComment(comment: YouTubeComment): Promise<SentimentAnalysis> {
         const prompt = createSingleCommentPrompt(comment);
 
@@ -57,7 +95,7 @@ export class GroqEngine implements AnalysisEngine {
             });
 
             const text = completion.choices[0]?.message?.content || "";
-            const parsed = JSON.parse(text) as GroqResponse;
+            const parsed = this.parseJSON<GroqResponse>(text);
 
             return {
                 commentId: comment.id,
@@ -194,6 +232,31 @@ export class GroqEngine implements AnalysisEngine {
                 "GROQ_BATCH_ERROR",
                 error
             );
+        }
+    }
+
+    async generateContextSummary(video: { title: string; channelName: string; description?: string; transcript?: string }): Promise<string> {
+        const prompt = `Define the "Stance Profile" of this video.
+Title: ${video.title}
+Creator: ${video.channelName}
+1. Main message
+2. What behavior/people is the creator attacking? (e.g. "people who only talk")
+3. What values is the creator supporting? (e.g. "direct action")
+Transcript Snippet: ${video.transcript?.slice(0, 3000)}`;
+
+        try {
+            const completion = await this.client.chat.completions.create({
+                messages: [
+                    { role: "system", content: "You are a helpful assistant that summarizes video content." },
+                    { role: "user", content: prompt },
+                ],
+                model: DEFAULT_MODEL,
+            });
+
+            return completion.choices[0]?.message?.content?.trim() || "Summary unavailable.";
+        } catch (error: any) {
+            console.error("[Groq] Summary failed:", error.message);
+            return video.description?.slice(0, 200) || "Video about " + video.title;
         }
     }
 
