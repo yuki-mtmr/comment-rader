@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/yukimatsumori/projects/comment-radar show d86bc0e --stat)",
+      "Bash(git -C /Users/yukimatsumori/projects/comment-radar status --short)",
+      "Bash(tree:*)",
+      "Bash(git -C /Users/yukimatsumori/projects/comment-radar diff docs/ROADMAP.md)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(npx create-next-app:*)",
+      "Read(//Users/yukimatsumori/projects/**)"
+    ]
+  }
+}
