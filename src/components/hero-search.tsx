@@ -7,23 +7,17 @@ import { Input } from "@/components/ui/input";
 
 interface HeroSearchProps {
   onSearch?: (url: string) => void;
+  isLoading?: boolean;
 }
 
-export function HeroSearch({ onSearch }: HeroSearchProps) {
+export function HeroSearch({ onSearch, isLoading = false }: HeroSearchProps) {
   const [url, setUrl] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!url.trim()) return;
-
-    setIsLoading(true);
-
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 500));
+    if (!url.trim() || isLoading) return;
 
     onSearch?.(url);
-    setIsLoading(false);
   };
 
   return (

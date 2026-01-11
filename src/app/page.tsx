@@ -69,7 +69,7 @@ export default function Home() {
 
   return (
     <div className="space-y-8">
-      <HeroSearch onSearch={handleSearch} />
+      <HeroSearch onSearch={handleSearch} isLoading={isLoading} />
 
       {error && (
         <Card className="glass-dark border-red-500/50">
