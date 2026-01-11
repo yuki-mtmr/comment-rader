@@ -8,8 +8,9 @@ import type { AnalysisEngine } from "./types";
 import type { AnalysisEngineConfig } from "@/types";
 import { MockEngine } from "./mock-engine";
 import { GeminiEngine, createGeminiEngine } from "./gemini-engine";
+import { GroqEngine, createGroqEngine } from "./groq-engine";
 
-export type EngineType = "mock" | "gemini" | "openai";
+export type EngineType = "mock" | "gemini" | "openai" | "groq";
 
 interface EngineFactoryConfig {
   type?: EngineType;
@@ -31,9 +32,12 @@ export function createAnalysisEngine(config?: EngineFactoryConfig): AnalysisEngi
     case "gemini":
       return createGeminiEngine(config?.apiKey, config?.engineConfig);
 
+    case "groq":
+      return createGroqEngine(config?.apiKey, config?.engineConfig);
+
     case "openai":
       // TODO: Implement OpenAI engine in future
-      throw new Error("OpenAI engine not yet implemented. Use 'gemini' or 'mock'.");
+      throw new Error("OpenAI engine not yet implemented. Use 'gemini', 'groq' or 'mock'.");
 
     default:
       throw new Error(`Unknown engine type: ${engineType}`);
@@ -51,6 +55,10 @@ function getEngineTypeFromEnv(): EngineType {
 
   // Check LLM_ENGINE setting
   const llmEngine = process.env.LLM_ENGINE?.toLowerCase();
+
+  if (llmEngine === "groq") {
+    return "groq";
+  }
 
   if (llmEngine === "gemini") {
     return "gemini";

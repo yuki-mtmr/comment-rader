@@ -104,10 +104,18 @@ export class GeminiEngine implements AnalysisEngine {
         const text = response.text();
 
         // Parse JSON response
-        const parsedArray = this.parseJSON<GeminiResponse[]>(text);
+        const parsed = this.parseJSON<any>(text);
 
-        if (!Array.isArray(parsedArray)) {
-          throw new Error("Expected JSON array response from Gemini");
+        let parsedArray: GeminiResponse[] = [];
+        if (Array.isArray(parsed)) {
+          parsedArray = parsed;
+        } else if (parsed.comments && Array.isArray(parsed.comments)) {
+          parsedArray = parsed.comments;
+        } else if (parsed.analyses && Array.isArray(parsed.analyses)) {
+          parsedArray = parsed.analyses;
+        } else {
+          console.warn("Unexpected Gemini JSON structure:", text.slice(0, 100));
+          parsedArray = [parsed]; // Single object fallback
         }
 
         // Map to SentimentAnalysis format
@@ -119,7 +127,7 @@ export class GeminiEngine implements AnalysisEngine {
               commentId: comment.id,
               score: 0,
               weightedScore: 0,
-              emotions: ["analytical"] as EmotionTag[],
+              emotions: ["neutral"] as EmotionTag[],
               isSarcasm: false,
               reason: "Gemini skipped this comment in batch analysis",
             };
@@ -129,9 +137,9 @@ export class GeminiEngine implements AnalysisEngine {
             commentId: item.commentId,
             score: this.clampScore(item.score),
             weightedScore: this.calculateWeightedScore(item.score, comment.likeCount),
-            emotions: item.emotions as EmotionTag[],
-            isSarcasm: item.isSarcasm,
-            reason: item.reason,
+            emotions: (item.emotions || ["neutral"]) as EmotionTag[],
+            isSarcasm: !!item.isSarcasm,
+            reason: item.reason || "No reason provided",
           };
         });
 

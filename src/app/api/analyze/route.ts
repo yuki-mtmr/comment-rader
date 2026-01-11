@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
 
     // Check if we should use mock data (complete dataset)
     if (isMockEngineEnabled()) {
+      console.log("[API] Running in MOCK MODE (Mock dataset from generators.ts)");
       // Use mock data for development
       const { generateMockDataset } = await import("@/lib/mock-data/generators");
       const mockData = generateMockDataset(body.maxComments || 20);
@@ -42,6 +43,7 @@ export async function POST(request: NextRequest) {
     // Real YouTube API integration with sentiment analysis
     const youtubeClient = createYouTubeClient();
     const engine = createAnalysisEngine(); // Auto-selects engine based on environment
+    console.log(`[API] Using analysis engine: ${engine.name}`);
 
     // Fetch video metadata
     const video = await youtubeClient.getVideo(videoId);

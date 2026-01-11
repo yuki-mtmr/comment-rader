@@ -24,7 +24,7 @@ Key guidelines:
 4. Strong emotions (enthusiasm, anger) should score near ±1
 5. Be culturally aware and context-sensitive
 
-Return ONLY valid JSON array, no additional text.`;
+Return ONLY valid JSON object, no additional text.`;
 
 /**
  * Create a batch analysis prompt
@@ -49,27 +49,28 @@ ${videoContext.description ? `Description: "${videoContext.description.slice(0, 
     likeCount: c.likeCount,
   }));
 
-  return `${contextInfo}Analyze the following ${comments.length} YouTube comments and return a JSON array with sentiment analysis for each.
+  return `${contextInfo}Analyze the following ${comments.length} YouTube comments and return a JSON object containing an array under the "comments" key.
 
 Comments:
 ${JSON.stringify(commentsJson, null, 2)}
 
-Return format (JSON array only, no markdown):
-[
-  {
-    "id": 0,
-    "commentId": "comment_id_here",
-    "score": 0.85,
-    "emotions": ["joy", "supportive"],
-    "isSarcasm": false,
-    "reason": "Enthusiastic praise with genuine gratitude"
-  },
-  ...
-]
+Return format (JSON object only, no markdown):
+{
+  "comments": [
+    {
+      "commentId": "comment_id_here",
+      "score": 0.85,
+      "emotions": ["joy", "supportive"],
+      "isSarcasm": false,
+      "reason": "Enthusiastic praise with genuine gratitude"
+    },
+    ...
+  ]
+}
 
 Emotion tags to choose from: "joy", "anger", "sadness", "fear", "surprise", "disgust", "empathy", "supportive", "funny", "critical", "grateful", "frustrated", "enthusiastic", "analytical", "sarcasm", "confused", "disappointed", "excited"
 
-Now analyze all ${comments.length} comments and return the JSON array:`;
+Now analyze all ${comments.length} comments and return the JSON object:`;
 }
 
 /**
