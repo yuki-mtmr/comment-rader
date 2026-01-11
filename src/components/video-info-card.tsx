@@ -4,6 +4,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Eye, ThumbsUp, MessageSquare, Calendar } from "lucide-react";
 
+import { useLanguage } from "@/lib/i18n/context";
+
 interface VideoInfoCardProps {
   title: string;
   channelName: string;
@@ -23,6 +25,8 @@ export function VideoInfoCard({
   commentCount,
   publishedAt,
 }: VideoInfoCardProps) {
+  const { language, t } = useLanguage();
+
   const formatNumber = (num: number): string => {
     if (num >= 1000000) {
       return `${(num / 1000000).toFixed(1)}M`;
@@ -35,7 +39,8 @@ export function VideoInfoCard({
 
   const formatDate = (dateString: string): string => {
     const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
+    const locale = language === "ja" ? "ja-JP" : "en-US";
+    return date.toLocaleDateString(locale, {
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -66,15 +71,15 @@ export function VideoInfoCard({
             <div className="flex flex-wrap gap-4">
               <Badge variant="secondary" className="glass text-sm py-1 px-3">
                 <Eye className="w-4 h-4 mr-2" />
-                {formatNumber(viewCount)} views
+                {formatNumber(viewCount)} {t.video.views}
               </Badge>
               <Badge variant="secondary" className="glass text-sm py-1 px-3">
                 <ThumbsUp className="w-4 h-4 mr-2" />
-                {formatNumber(likeCount)} likes
+                {formatNumber(likeCount)} {t.video.likes}
               </Badge>
               <Badge variant="secondary" className="glass text-sm py-1 px-3">
                 <MessageSquare className="w-4 h-4 mr-2" />
-                {formatNumber(commentCount)} comments
+                {formatNumber(commentCount)} {t.video.comments}
               </Badge>
               <Badge variant="secondary" className="glass text-sm py-1 px-3">
                 <Calendar className="w-4 h-4 mr-2" />

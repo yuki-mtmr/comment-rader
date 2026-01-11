@@ -3,6 +3,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 
+import { useLanguage } from "@/lib/i18n/context";
+
 interface SentimentDonutChartProps {
   positive: number;
   neutral: number;
@@ -14,10 +16,12 @@ export function SentimentDonutChart({
   neutral,
   negative,
 }: SentimentDonutChartProps) {
+  const { t } = useLanguage();
+
   const data = [
-    { name: "Positive", value: positive, color: "hsl(var(--sentiment-positive))" },
-    { name: "Neutral", value: neutral, color: "hsl(var(--sentiment-neutral))" },
-    { name: "Negative", value: negative, color: "hsl(var(--sentiment-negative))" },
+    { name: t.charts.positive, value: positive, color: "hsl(var(--sentiment-positive))" },
+    { name: t.charts.neutral, value: neutral, color: "hsl(var(--sentiment-neutral))" },
+    { name: t.charts.negative, value: negative, color: "hsl(var(--sentiment-negative))" },
   ];
 
   const COLORS = data.map(item => item.color);
@@ -31,7 +35,7 @@ export function SentimentDonutChart({
         <div className="glass-dark p-3 rounded-lg border border-white/10">
           <p className="font-semibold">{payload[0].name}</p>
           <p className="text-sm">
-            {payload[0].value} comments ({percentage}%)
+            {payload[0].value} {t.video.comments} ({percentage}%)
           </p>
         </div>
       );
@@ -42,7 +46,7 @@ export function SentimentDonutChart({
   return (
     <Card className="glass-dark border-white/10">
       <CardHeader>
-        <CardTitle className="gradient-text">Sentiment Overview</CardTitle>
+        <CardTitle className="gradient-text">{t.charts.sentimentDistribution}</CardTitle>
       </CardHeader>
       <CardContent>
         <ResponsiveContainer width="100%" height={300}>

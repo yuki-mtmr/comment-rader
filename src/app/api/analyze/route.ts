@@ -59,6 +59,7 @@ export async function POST(request: NextRequest) {
     // Analyze comments in batches
     const batchSize = engine.getConfig().batchSize;
     const analyzedComments: AnalyzedComment[] = [];
+    let isPartialResult = false;
 
     for (let i = 0; i < comments.length; i += batchSize) {
       const batch = comments.slice(i, i + batchSize);
@@ -69,6 +70,10 @@ export async function POST(request: NextRequest) {
           description: video.description,
         },
       });
+
+      if (result.isPartial) {
+        isPartialResult = true;
+      }
 
       // Merge sentiment data with comments and detect repeat users
       const seenUserIds = new Set<string>();
@@ -96,8 +101,9 @@ export async function POST(request: NextRequest) {
       }
 
       // Add a delay between batches to stay under 15 RPM (free tier limit)
+      // 4.5 seconds ensures we stay well below 15 RPM even with processing overhead
       if (i + batchSize < comments.length) {
-        await new Promise(resolve => setTimeout(resolve, 3500));
+        await new Promise(resolve => setTimeout(resolve, 4500));
       }
     }
 
@@ -144,6 +150,7 @@ export async function POST(request: NextRequest) {
       timeline,
       scatterData,
       analyzedAt: new Date().toISOString(),
+      isPartial: isPartialResult,
     };
 
     return NextResponse.json(response);

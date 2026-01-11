@@ -13,27 +13,20 @@ import type { VideoAnalysis } from "@/types";
 import { toast } from "sonner";
 import { getCachedAnalysis, setCachedAnalysis } from "@/lib/cache/analysis-cache";
 
+import { useLanguage } from "@/lib/i18n/context";
+
 export default function Home() {
   const [analysis, setAnalysis] = useState<VideoAnalysis | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { language, t } = useLanguage();
 
   const handleSearch = async (url: string) => {
     setIsLoading(true);
     setError(null);
     setAnalysis(null);
 
-    /* Temporarily disabled cache to ensure logic updates are visible
-    const cached = getCachedAnalysis(url);
-    if (cached) {
-      setAnalysis(cached);
-      setIsLoading(false);
-      toast.success("Loaded from cache", { duration: 2000 });
-      return;
-    }
-    */
-
-    toast.loading("Analyzing video comments...", { id: "analysis" });
+    toast.loading(t.common.loading, { id: "analysis" });
 
     try {
       const response = await fetch("/api/analyze", {
@@ -41,12 +34,12 @@ export default function Home() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ url, maxComments: 25 }),
+        body: JSON.stringify({ url, maxComments: 50 }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to analyze video");
+        throw new Error(errorData.error || t.common.error);
       }
 
       const data: VideoAnalysis = await response.json();
@@ -55,12 +48,13 @@ export default function Home() {
       // Cache the result
       setCachedAnalysis(url, data);
 
-      toast.success(
-        `Analysis complete! Analyzed ${data.comments.length} comments.`,
-        { id: "analysis" }
-      );
+      const successMsg = language === "ja"
+        ? `分析が完了しました！${data.comments.length}件のコメントを分析しました。`
+        : `Analysis complete! Analyzed ${data.comments.length} comments.`;
+
+      toast.success(successMsg, { id: "analysis" });
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "An error occurred";
+      const errorMessage = err instanceof Error ? err.message : t.common.error;
       setError(errorMessage);
       toast.error(errorMessage, { id: "analysis" });
     } finally {
@@ -93,6 +87,16 @@ export default function Home() {
 
       {analysis && !isLoading && (
         <>
+          {analysis.isPartial && (
+            <Card className="glass-dark border-yellow-500/50 mb-6">
+              <CardContent className="p-4 flex items-center justify-center gap-3">
+                <span className="text-yellow-400 text-xl">⚠️</span>
+                <p className="text-yellow-400 text-sm">
+                  <strong>{t.quota.title}:</strong> {t.quota.message}
+                </p>
+              </CardContent>
+            </Card>
+          )}
           <VideoInfoCard {...analysis.video} />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

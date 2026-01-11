@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ThumbsUp, AlertCircle, Smile, Frown, Meh } from "lucide-react";
 
+import { useLanguage } from "@/lib/i18n/context";
+
 interface Comment {
   id: string;
   author: string;
@@ -21,6 +23,7 @@ interface CommentListProps {
 }
 
 export function CommentList({ comments, maxDisplay = 10 }: CommentListProps) {
+  const { language, t } = useLanguage();
   const displayComments = comments.slice(0, maxDisplay);
 
   const getSentimentIcon = (sentiment: number) => {
@@ -30,9 +33,9 @@ export function CommentList({ comments, maxDisplay = 10 }: CommentListProps) {
   };
 
   const getSentimentLabel = (sentiment: number): string => {
-    if (sentiment > 0.3) return "Positive";
-    if (sentiment < -0.3) return "Negative";
-    return "Neutral";
+    if (sentiment > 0.3) return t.charts.positive;
+    if (sentiment < -0.3) return t.charts.negative;
+    return t.charts.neutral;
   };
 
   const getSentimentColor = (sentiment: number): string => {
@@ -49,6 +52,13 @@ export function CommentList({ comments, maxDisplay = 10 }: CommentListProps) {
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffMins = Math.floor(diffMs / (1000 * 60));
 
+    if (language === "ja") {
+      if (diffDays > 0) return `${diffDays}日前`;
+      if (diffHours > 0) return `${diffHours}時間前`;
+      if (diffMins > 0) return `${diffMins}分前`;
+      return "たった今";
+    }
+
     if (diffDays > 0) return `${diffDays}d ago`;
     if (diffHours > 0) return `${diffHours}h ago`;
     if (diffMins > 0) return `${diffMins}m ago`;
@@ -58,9 +68,11 @@ export function CommentList({ comments, maxDisplay = 10 }: CommentListProps) {
   return (
     <Card className="glass-dark border-white/10">
       <CardHeader>
-        <CardTitle className="gradient-text">Top Comments</CardTitle>
+        <CardTitle className="gradient-text">{t.comments.topComments}</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Showing {displayComments.length} of {comments.length} comments
+          {language === "ja"
+            ? `${comments.length}件中${displayComments.length}件を表示中`
+            : `Showing ${displayComments.length} of ${comments.length} comments`}
         </p>
       </CardHeader>
       <CardContent>
@@ -112,7 +124,7 @@ export function CommentList({ comments, maxDisplay = 10 }: CommentListProps) {
                       className="text-xs bg-amber-500/20 text-amber-400 border-amber-500/30"
                     >
                       <AlertCircle className="w-3 h-3 mr-1" />
-                      Sarcasm
+                      {t.comments.sarcasm}
                     </Badge>
                   )}
                 </div>

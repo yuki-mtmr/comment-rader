@@ -99,6 +99,7 @@ export interface VideoAnalysis {
   timeline: TimeSeriesPoint[];
   scatterData: ScatterDataPoint[];
   analyzedAt: string;
+  isPartial?: boolean;
 }
 
 // Engine Types

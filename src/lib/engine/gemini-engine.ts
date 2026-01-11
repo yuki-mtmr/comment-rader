@@ -19,7 +19,7 @@ import { SYSTEM_PROMPT, createBatchPrompt, createSingleCommentPrompt } from "@/l
 import { AnalysisError } from "@/types";
 
 const DEFAULT_CONFIG: AnalysisEngineConfig = {
-  batchSize: 25, // Increased to reduce total request count (RPM bottleneck)
+  batchSize: 50, // Increased to reduce total request count (RPM bottleneck)
   maxComments: 500,
   timeoutMs: 30000,
 };

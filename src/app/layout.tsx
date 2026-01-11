@@ -14,6 +14,9 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+import { LanguageProvider } from "@/lib/i18n/context";
+import { LanguageSwitcher } from "@/components/language-switcher";
+
 export const metadata: Metadata = {
   title: "CommentRadar - YouTube Comment Sentiment Analysis",
   description: "Analyze YouTube video comments with AI-powered sentiment analysis. Visualize viewer reactions and discover patterns in comment sentiment.",
@@ -29,17 +32,20 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <ErrorBoundary>
-          <header className="fixed top-0 left-0 right-0 z-50 glass-dark">
-            <div className="container mx-auto px-4 py-4">
-              <h1 className="text-2xl font-bold gradient-text">CommentRadar</h1>
-            </div>
-          </header>
-          <main className="container mx-auto px-4 pt-24 pb-12">
-            {children}
-          </main>
-          <Toaster />
-        </ErrorBoundary>
+        <LanguageProvider>
+          <ErrorBoundary>
+            <header className="fixed top-0 left-0 right-0 z-50 glass-dark">
+              <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+                <h1 className="text-2xl font-bold gradient-text">CommentRadar</h1>
+                <LanguageSwitcher />
+              </div>
+            </header>
+            <main className="container mx-auto px-4 pt-24 pb-12">
+              {children}
+            </main>
+            <Toaster />
+          </ErrorBoundary>
+        </LanguageProvider>
       </body>
     </html>
   );

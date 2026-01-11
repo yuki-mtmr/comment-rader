@@ -12,6 +12,8 @@ import {
   ReferenceLine,
 } from "recharts";
 
+import { useLanguage } from "@/lib/i18n/context";
+
 interface TimelineDataPoint {
   time: number; // hours since video published
   avgSentiment: number; // average sentiment in this time window
@@ -23,20 +25,22 @@ interface SentimentTimelineProps {
 }
 
 export function SentimentTimeline({ data }: SentimentTimelineProps) {
+  const { t } = useLanguage();
+
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       const point = payload[0].payload;
       return (
         <div className="glass-dark p-3 rounded-lg border border-white/10">
           <p className="font-semibold text-sm mb-1">
-            {point.time.toFixed(0)} hours after upload
+            {point.time.toFixed(0)} {t.charts.time}
           </p>
           <p className="text-sm mb-1">
-            Avg Sentiment: {point.avgSentiment > 0 ? "+" : ""}
+            {t.charts.avgSentiment}: {point.avgSentiment > 0 ? "+" : ""}
             {point.avgSentiment.toFixed(2)}
           </p>
           <p className="text-sm text-muted-foreground">
-            {point.commentCount} comments
+            {point.commentCount} {t.video.comments}
           </p>
         </div>
       );
@@ -53,9 +57,9 @@ export function SentimentTimeline({ data }: SentimentTimelineProps) {
   return (
     <Card className="glass-dark border-white/10">
       <CardHeader>
-        <CardTitle className="gradient-text">Sentiment Timeline</CardTitle>
+        <CardTitle className="gradient-text">{t.charts.sentimentTimeline}</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Average sentiment over time
+          {t.common.appSubtitle}
         </p>
       </CardHeader>
       <CardContent>
@@ -69,7 +73,7 @@ export function SentimentTimeline({ data }: SentimentTimelineProps) {
               dataKey="time"
               stroke="hsl(var(--muted-foreground))"
               label={{
-                value: "Hours Since Upload",
+                value: t.charts.hoursSincePublished,
                 position: "insideBottom",
                 offset: -10,
                 fill: "hsl(var(--muted-foreground))",
@@ -79,7 +83,7 @@ export function SentimentTimeline({ data }: SentimentTimelineProps) {
               domain={[-1, 1]}
               stroke="hsl(var(--muted-foreground))"
               label={{
-                value: "Average Sentiment",
+                value: t.charts.avgSentiment,
                 angle: -90,
                 position: "insideLeft",
                 fill: "hsl(var(--muted-foreground))",
