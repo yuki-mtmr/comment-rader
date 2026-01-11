@@ -1,65 +1,158 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from "react";
+import { HeroSearch } from "@/components/hero-search";
+import { VideoInfoCard } from "@/components/video-info-card";
+import { SentimentDonutChart } from "@/components/charts/sentiment-donut-chart";
+import { TimeScatterPlot } from "@/components/charts/time-scatter-plot";
+import { SentimentTimeline } from "@/components/charts/sentiment-timeline";
+import { CommentList } from "@/components/comment-list";
+
+// Mock data
+const mockVideoInfo = {
+  title: "Building a Next.js App with TypeScript and Tailwind CSS",
+  channelName: "Web Dev Mastery",
+  thumbnailUrl: "https://picsum.photos/seed/nextjs/640/360",
+  viewCount: 125000,
+  likeCount: 8500,
+  commentCount: 523,
+  publishedAt: "2024-01-10T10:00:00Z",
+};
+
+const mockComments = [
+  {
+    id: "1",
+    author: "TechEnthusiast",
+    text: "This is exactly what I needed! The explanation is crystal clear and the examples are super helpful.",
+    likeCount: 42,
+    publishedAt: "2024-01-10T12:30:00Z",
+    sentiment: 0.85,
+    emotions: ["supportive", "grateful"],
+    isSarcasm: false,
+  },
+  {
+    id: "2",
+    author: "CodeNewbie",
+    text: "I've been struggling with TypeScript for weeks, but this tutorial made everything click. Thank you!",
+    likeCount: 28,
+    publishedAt: "2024-01-10T14:15:00Z",
+    sentiment: 0.78,
+    emotions: ["grateful", "relieved"],
+    isSarcasm: false,
+  },
+  {
+    id: "3",
+    author: "CriticalViewer",
+    text: "The pacing is too fast and some important concepts are glossed over. Not great for beginners.",
+    likeCount: 15,
+    publishedAt: "2024-01-10T16:45:00Z",
+    sentiment: -0.65,
+    emotions: ["disappointed", "critical"],
+    isSarcasm: false,
+  },
+  {
+    id: "4",
+    author: "FunnyGuy",
+    text: "Great tutorial! Now I can finally build that app I've been procrastinating on for 6 months... or will I? 😅",
+    likeCount: 56,
+    publishedAt: "2024-01-10T18:20:00Z",
+    sentiment: 0.45,
+    emotions: ["funny", "self-aware"],
+    isSarcasm: false,
+  },
+  {
+    id: "5",
+    author: "SarcasticDev",
+    text: "Oh wonderful, another tutorial telling me to 'just npm install'. Very helpful indeed.",
+    likeCount: 8,
+    publishedAt: "2024-01-10T20:00:00Z",
+    sentiment: -0.55,
+    emotions: ["sarcasm", "frustrated"],
+    isSarcasm: true,
+  },
+  {
+    id: "6",
+    author: "HappyLearner",
+    text: "The production tips at the end are gold! Subscribed immediately.",
+    likeCount: 34,
+    publishedAt: "2024-01-11T08:30:00Z",
+    sentiment: 0.92,
+    emotions: ["enthusiastic", "supportive"],
+    isSarcasm: false,
+  },
+  {
+    id: "7",
+    author: "NeutralObserver",
+    text: "Covers the basics well. Could use more advanced examples but it's a solid foundation.",
+    likeCount: 19,
+    publishedAt: "2024-01-11T10:15:00Z",
+    sentiment: 0.15,
+    emotions: ["analytical", "balanced"],
+    isSarcasm: false,
+  },
+  {
+    id: "8",
+    author: "AngryCommenter",
+    text: "This is outdated already. Why not use the latest version? Total waste of time.",
+    likeCount: 3,
+    publishedAt: "2024-01-11T12:00:00Z",
+    sentiment: -0.88,
+    emotions: ["angry", "frustrated"],
+    isSarcasm: false,
+  },
+];
+
+const mockScatterData = mockComments.map((comment, idx) => ({
+  time: idx * 2.5 + Math.random() * 2,
+  sentiment: comment.sentiment,
+  likeCount: comment.likeCount,
+  text: comment.text,
+}));
+
+const mockTimelineData = [
+  { time: 0, avgSentiment: 0.75, commentCount: 12 },
+  { time: 6, avgSentiment: 0.62, commentCount: 28 },
+  { time: 12, avgSentiment: 0.48, commentCount: 45 },
+  { time: 18, avgSentiment: 0.35, commentCount: 67 },
+  { time: 24, avgSentiment: 0.52, commentCount: 89 },
+  { time: 30, avgSentiment: 0.58, commentCount: 112 },
+  { time: 36, avgSentiment: 0.45, commentCount: 148 },
+  { time: 42, avgSentiment: 0.38, commentCount: 187 },
+  { time: 48, avgSentiment: 0.41, commentCount: 223 },
+];
+
+const mockSentimentCounts = {
+  positive: mockComments.filter((c) => c.sentiment > 0.2).length,
+  neutral: mockComments.filter((c) => c.sentiment >= -0.2 && c.sentiment <= 0.2).length,
+  negative: mockComments.filter((c) => c.sentiment < -0.2).length,
+};
 
 export default function Home() {
+  const [showResults, setShowResults] = useState(true);
+
+  const handleSearch = (url: string) => {
+    console.log("Searching for:", url);
+    setShowResults(true);
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+    <div className="space-y-8">
+      <HeroSearch onSearch={handleSearch} />
+
+      {showResults && (
+        <>
+          <VideoInfoCard {...mockVideoInfo} />
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <SentimentDonutChart {...mockSentimentCounts} />
+            <SentimentTimeline data={mockTimelineData} />
+          </div>
+
+          <TimeScatterPlot data={mockScatterData} />
+
+          <CommentList comments={mockComments} maxDisplay={8} />
+        </>
+      )}
     </div>
   );
 }
