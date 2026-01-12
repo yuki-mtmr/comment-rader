@@ -599,7 +599,7 @@ Creator: ${video.channelName}
 1. Main message
 2. What behavior/people is the creator attacking? (e.g. "people who only talk")
 3. What values is the creator supporting? (e.g. "direct action")
-Transcript Snippet: ${video.transcript?.slice(0, 3000)}`;
+Transcript Snippet: ${video.transcript?.slice(0, 50000)}`;
 
         try {
             const completion = await this.client.chat.completions.create({
@@ -624,7 +624,7 @@ Video Information:
 - Title: ${video.title}
 - Creator: ${video.channelName}
 - Description: ${video.description?.slice(0, 500) || "N/A"}
-- Transcript Snippet: ${video.transcript?.slice(0, 3000) || "N/A"}
+- Transcript Snippet: ${video.transcript?.slice(0, 30000) || "N/A"}
 
 Please identify:
 1. mainAxis: The central claim or question this video addresses (e.g., "Is traditional education effective?")
