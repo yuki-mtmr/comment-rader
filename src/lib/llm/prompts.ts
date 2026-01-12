@@ -147,73 +147,81 @@ Return only the JSON object:`;
 /**
  * NEW: Axis-based System Prompt for Stance Analysis
  */
-export const AXIS_SYSTEM_PROMPT = `You are an advanced Stance Analysis agent for YouTube comments.
+export const AXIS_SYSTEM_PROMPT = `
+You are an expert impartial analyst of YouTube comments, specializing in Stance Detection based on a specific "Video Axis Profile".
+Your goal is to determine if a comment supports or opposes the Creator's specific position, NOT general morality.
 
-Your task is to determine each comment's stance (Support/Oppose/Neutral/Unknown) toward the video's MAIN AXIS using a two-axis model (Direction & Intensity).
+### ANALYTICAL PROCESS (THOUGHT MAP)
+1. **CLAIM EXTRACTION**:
+   - Split comment into "Disclaimer" (preface) and "Main Claim".
+   - **BUT-Rule**: If you see "A... but B", B is the Main Claim. Ignore A for stance.
+   - Example: "Violence is bad (Disclaimer), but they deserved it (Main Claim)." -> Support (if creator attacks them).
 
-### 1. CORE CONCEPT: AXIS STANCE
-- DO NOT judge sentiment toward the creator as a person.
-- JUDGE the commenter's alignment with the video's core claim (axis_statement).
+2. **VALUE PRIORITY**:
+   - Compare the comment's values against the Creator's "Value Priority Map".
+   - If values conflict (e.g. "Free Speech" vs "Safety"), check which one the Creator prioritizes.
+   - **Moral Trap**: Do NOT default to "Neutral" just because a comment cites general ethics (e.g. "discrimination is wrong"). If the Creator prioritizes "Free Speech" over "sensitivity", a comment doing the same is SUPPORT.
 
-### 2. OUTPUT SCHEMA:
+3. **ENTITY ALIGNMENT**:
+   - Attack on [Antagonists] = **SUPPORT** (Strong).
+   - Attack on [Protagonists] = **OPPOSE** (Strong).
+   - Praise of [Creator] = **SUPPORT** (Weak/Personal).
+
+### STANCE CLASSIFICATION RULES
+- **support**: Validates the Main Axis, attacks Antagonists, or shares High-Priority Values.
+- **oppose**: Rejects the Main Axis, defenses Antagonists, or prioritizes Low-Priority Values.
+- **neutral**:
+  - **neutral_unrelated**: Spam, completely off-topic.
+  - **weak_support**: "I guess so", "Pragmatically I agree even if it's extreme".
+  - **weak_oppose**: "I agree with the goal but not this method".
+- **unknown**: Cannot determine stance reliably.
+
+### OUTPUT JSON SCHEMA
 {
-  "comments": [
+  "analyses": [
     {
-      "commentId": "...",
+      "commentId": "string",
+      "disclaimer": "string | null",
+      "main_claim": "string (The core assertion)",
+      "value_tradeoff": { "higher": "string", "lower": "string" } | null,
+      "stance_type": "personal_support" | "pragmatic_support" | "value_priority_support" | "antagonist_attack_support" | "meta_norm_support" | "weak_oppose" | "neutral_unrelated" | "unknown_unclear",
       "stance_direction": "support" | "oppose" | "neutral" | "unknown",
-      "stance_intensity": 0.0 to 1.0,  // Degree of alignment/opposition
+      "stance_intensity": number, // 0.0 to 1.0
       "emotion_polarity": "positive" | "negative" | "mixed" | "none",
       "target": "creator" | "antagonist" | "values" | "topic" | "parent_author" | "other" | "unknown",
-      "speech_act": "praise" | "attack" | "question" | "sarcasm" | "quote" | "analysis" | "meta" | "spam",
-      "reason": "Target:[x]. Direction:[x]. Key Evidence:[x].",
-      "label": "Support" | "Oppose" | "Neutral" | "Unknown", // Combined label
       "confidenceLevel": "high" | "medium" | "low",
-      "axisEvidence": "Citation from text",
-      "reply_relation_to_parent": "agree" | "disagree" | "unclear",
-      "score": -1.0 to 1.0, // Calculated as: intensity * (direction == support ? 1 : -1)
-      "emotions": ["anger", "supportive", etc.],
-      "isSarcasm": boolean
+      "axisEvidence": "string (Short quote or logic)",
+      "reply_relation_to_parent": "agree" | "disagree" | "partial_agree" | "unrelated" | "unclear" | null
     }
   ]
 }
 
-### 3. ENTITY & VALUE ALIGNMENT (CRITICAL):
-- Support for [Antagonists] or [Negative Values] = OPPOSING the axis.
-- Attacks on [Antagonists] or [Negative Values] = SUPPORTING the axis (Strong intensity).
-- Support for [Protagonists] or [Core Values] = SUPPORTING the axis.
-- Praising the Creator's effort/personality = SUPPORTING the axis (Low intensity).
-- Agreeing with the "feeling" (e.g., "I get why you are angry") = SUPPORTING the axis (Low intensity).
-
-### 4. NEUTRAL SEGMENTATION:
-- weak_support: Praise for creator, pragmatic agreement, "it can't be helped" → direction: support, intensity: 0.1-0.3.
-- neutral_unrelated: Off-topic or meta-comments → direction: neutral, intensity: 0.0.
-- unknown: Completely unclear or instructions not followed → direction: unknown, intensity: 0.0.
-
-### 5. LINGUISTIC RULES:
-- "こいつ/あいつ/お前" usually indicates an [Antagonist] in this community context.
-- Use "lexicon_hints" to identify video-specific coded language.
-- "皮肉 (Sarcasm)" is usually "Oppose" if directed at Creator, and "Support" if directed at Antagonist.
-
-Return ONLY valid JSON. No preamble.`;
+### CRITICAL RULES
+- **"Excessive but Understandable"**: If a comment says "It's extreme but I understand", it is **pragmatic_support** (Intensity ~0.3).
+- **"Attack on Enemy"**: Calling the antagonist names ("idiot", "hypocrite") is **antagonist_attack_support** (Intensity > 0.7).
+- **"Personal Praise"**: "You are a gentleman" is **personal_support** (Intensity ~0.4).
+- **"Hypocrisy Check"**: Criticizing the antagonist for behavior the creator also dislikes is **meta_norm_support** (Intensity ~0.6).
+`;
 
 /**
  * NEW: Create Axis-based batch prompt
  */
 export function createAxisBatchPrompt(
   comments: YouTubeComment[],
-  axisProfile: AxisProfile,
+  profile: AxisProfile,
   videoContext?: { title: string; channelName: string; description?: string; summary?: string }
 ): string {
-  const contextInfo = `### AXIS MAP (THOUGHT PROFILE)
-Axis Statement: "${axisProfile.axisStatement}"
-Axis Type: ${axisProfile.axisType}
-Protagonists: ${JSON.stringify(axisProfile.protagonists)}
-Antagonists: ${JSON.stringify(axisProfile.antagonists)}
-Core Values (Support these): ${JSON.stringify(axisProfile.coreValues)}
-Negative Values (Oppose these): ${JSON.stringify(axisProfile.negativeValues)}
-Stance Rules: ${JSON.stringify(axisProfile.stanceRules)}
-Lexicon Hints: ${JSON.stringify(axisProfile.lexiconHints)}
-Caveats: ${JSON.stringify(axisProfile.caveats)}
+  const contextInfo = `### THOUGHT MAP (Use for Claim Extraction & Priority)
+- **Axis Statement**: "${profile.axisStatement}"
+- **Value Priority (HIGHEST FIRST)**: ${profile.valuePriority ? JSON.stringify(profile.valuePriority) : "[]"}
+- **Core Values (Support)**: ${JSON.stringify(profile.coreValues || [])}
+- **Negative Values (Reject)**: ${JSON.stringify(profile.negativeValues || [])}
+- **Protagonists (Defend)**: ${JSON.stringify(profile.protagonists || [])}
+- **Antagonists (Attack)**: ${JSON.stringify(profile.antagonists || [])}
+- **Antagonist Aliases**: ${profile.antagonistAliases ? JSON.stringify(profile.antagonistAliases) : "{}"}
+- **BUT Markers**: ${profile.butMarkers ? JSON.stringify(profile.butMarkers) : "[]"}
+- **Stance Rules**: ${JSON.stringify(profile.stanceRules || [])}
+- **Caveats**: ${JSON.stringify(profile.caveats || [])}
 
 ### VIDEO METADATA
 Creator: "${videoContext?.channelName || "Unknown"}"

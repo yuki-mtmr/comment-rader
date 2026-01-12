@@ -57,6 +57,11 @@ interface AxisOpenAIResponse extends OpenAIResponse {
     replyRelation?: string;
     speech_act?: string;
     speechAct?: string;
+    // New fields for reasoning
+    disclaimer?: string | null;
+    main_claim?: string;
+    value_tradeoff?: { higher: string; lower: string } | null;
+    stance_type?: string;
 }
 
 export class OpenAIEngine implements AnalysisEngine {
@@ -117,10 +122,17 @@ export class OpenAIEngine implements AnalysisEngine {
     }
 
     /**
+     * Clamps a sentiment score between -1 and 1.
+     */
+    private clampScore(score: number): number {
+        return Math.max(-1, Math.min(1, score));
+    }
+
+    /**
      * Attempts to repair truncated JSON by closing open braces and brackets.
      */
-    private repairTruncatedJSON(json: string): string {
-        let repaired = json.trim();
+    private repairTruncatedJSON(jsonString: string): string {
+        let repaired = jsonString.trim();
 
         // If it ends with a comma after a value, remove it
         repaired = repaired.replace(/,\s*$/, "");
@@ -252,8 +264,11 @@ Return JSON with this exact structure:
   "antagonists": ["Name1", "Name2"],
   "coreValues": ["Value1", "Value2"],
   "negativeValues": ["Value1", "Value2"],
+  "valuePriority": ["Highest Value", "Medium Value", "Lowest Value"],
   "stanceRules": ["Rule1", "Rule2"],
   "lexiconHints": ["Term1", "Term2"],
+  "antagonistAliases": {"name": ["alias1"]},
+  "butMarkers": ["but", "however"],
   "caveats": ["Caveat1", "Caveat2"]
 }`;
 
@@ -281,8 +296,11 @@ Return JSON with this exact structure:
                 antagonists: parsed.antagonists || [],
                 coreValues: parsed.coreValues || [],
                 negativeValues: parsed.negativeValues || [],
+                valuePriority: parsed.valuePriority || [],
                 stanceRules: parsed.stanceRules || [],
                 lexiconHints: parsed.lexiconHints || [],
+                antagonistAliases: parsed.antagonistAliases,
+                butMarkers: parsed.butMarkers,
                 caveats: parsed.caveats || [],
                 generatedAt: new Date().toISOString(),
             };
@@ -304,6 +322,7 @@ Return JSON with this exact structure:
                 antagonists: [],
                 coreValues: [],
                 negativeValues: [],
+                valuePriority: [],
                 stanceRules: [],
                 lexiconHints: [],
                 caveats: [],
@@ -472,103 +491,141 @@ Return JSON with this exact structure:
             const parsed = this.parseJSON<any>(content);
 
             // Handle different response formats (array or object with nested array)
-            let rawResults: AxisOpenAIResponse[];
+            let rawResults: AxisOpenAIResponse[] = [];
             if (Array.isArray(parsed)) {
                 rawResults = parsed;
-            } else if (parsed.comments && Array.isArray(parsed.comments)) {
-                rawResults = parsed.comments;
             } else if (parsed.analyses && Array.isArray(parsed.analyses)) {
                 rawResults = parsed.analyses;
+            } else if (parsed.comments && Array.isArray(parsed.comments)) {
+                rawResults = parsed.comments;
             } else if (parsed.results && Array.isArray(parsed.results)) {
                 rawResults = parsed.results;
             } else {
                 console.error("[OpenAI] Unexpected response format:", parsed);
-                throw new AnalysisError(
-                    "OpenAI returned unexpected JSON format (expected array)",
-                    "OPENAI_INVALID_FORMAT",
-                    { parsed }
-                );
+                // Try to wrap single object if it looks like one
+                if (parsed.commentId) {
+                    rawResults = [parsed as AxisOpenAIResponse];
+                }
             }
+            throw new AnalysisError(
+                "OpenAI returned unexpected JSON format (expected array)",
+                "OPENAI_INVALID_FORMAT",
+                { parsed }
+            );
+        }
 
             console.log(`[OpenAI] Parsed ${rawResults.length} results from response`);
 
-            const commentMap = new Map(sortedComments.map(c => [c.id, c]));
+        const commentMap = new Map(sortedComments.map(c => [c.id, c]));
 
-            let analyses: SentimentAnalysis[] = rawResults.map((r) => {
-                const comment = commentMap.get(r.commentId);
-                const likeCount = comment?.likeCount || 0;
+        let analyses: SentimentAnalysis[] = rawResults.map((r) => {
+            const comment = commentMap.get(r.commentId);
+            const likeCount = comment?.likeCount || 0;
 
-                // Use new two-axis logic for score if available
-                const finalScore = r.score !== undefined ? r.score : 0;
-                const weightedScore = this.calculateWeightedScore(finalScore, likeCount);
+            // Local Score Calculation (Rule C)
+            const directionMultiplier =
+                r.stance_direction === "support" ? 1 :
+                    r.stance_direction === "oppose" ? -1 : 0;
 
-                return {
-                    commentId: r.commentId,
-                    score: finalScore,
-                    weightedScore,
-                    emotions: (r.emotions || []) as EmotionTag[],
-                    isSarcasm: !!r.isSarcasm,
-                    reason: r.reason,
-                    label: r.label,
-                    stanceDirection: r.stance_direction,
-                    stanceIntensity: r.stance_intensity,
-                    emotionPolarity: r.emotion_polarity,
-                    target: r.target,
-                    confidenceLevel: r.confidenceLevel,
-                    confidence: r.confidence,
-                    axisEvidence: r.axisEvidence,
-                    replyRelation: (r.reply_relation_to_parent || r.replyRelation) as any,
-                    speechAct: (r.speech_act || r.speechAct) as any,
-                };
-            });
+            const intensity = r.stance_intensity || 0;
+            // Overwrite score with local calculation
+            const finalScore = directionMultiplier * intensity;
 
-            // PASS 2: Apply stance synthesis for thread-aware logic (only in full mode)
-            if (!isLite) {
-                analyses = applyStanceSynthesis(analyses, sortedComments);
-            }
+            // Recalculate weighted score
+            const weightedScore = this.calculateWeightedScore(finalScore, likeCount);
 
-            const processingTimeMs = Date.now() - startTime;
-            const tokensUsed = response.usage?.total_tokens || 0;
-
-            return {
-                analyses,
-                processingTimeMs,
-                tokensUsed,
+            const baseAnalysis = {
+                commentId: r.commentId,
+                score: this.clampScore(finalScore), // Use locally calculated score
+                weightedScore,
+                emotions: (r.emotions || []) as EmotionTag[],
+                isSarcasm: !!r.isSarcasm,
+                reason: r.reason,
+                label: r.label,
+                stanceDirection: r.stance_direction,
+                stanceIntensity: intensity,
+                emotionPolarity: r.emotion_polarity,
+                target: r.target,
+                confidenceLevel: r.confidenceLevel,
+                confidence: r.confidence,
+                axisEvidence: r.axisEvidence,
+                replyRelation: (r.reply_relation_to_parent || r.replyRelation) as any,
+                speechAct: (r.speech_act || r.speechAct) as any,
+                // New fields
+                disclaimer: r.disclaimer || undefined,
+                mainClaim: r.main_claim,
+                valueTradeoff: r.value_tradeoff,
+                stanceType: r.stance_type as any,
             };
-        } catch (error: any) {
-            console.error("[OpenAI] Axis batch analysis failed:", error);
 
-            if (error.status === 429) {
-                throw new AnalysisError(
-                    "OpenAI API quota exceeded",
-                    "OPENAI_QUOTA_EXCEEDED",
-                    error
-                );
+            // Lite mode: minimal fields only
+            if (request.isLite) {
+                return {
+                    ...baseAnalysis,
+                    emotions: ["neutral"] as EmotionTag[],
+                    isSarcasm: false,
+                    reason: undefined,
+                    axisEvidence: undefined,
+                    replyRelation: undefined,
+                    speechAct: undefined,
+                    disclaimer: undefined,
+                    mainClaim: undefined,
+                    valueTradeoff: undefined,
+                    stanceType: undefined
+                };
             }
 
+            return baseAnalysis;
+        });
+
+        // PASS 2: Apply stance synthesis for thread-aware logic (only in full mode)
+        if (!isLite) {
+            analyses = applyStanceSynthesis(analyses, sortedComments);
+        }
+
+        const processingTimeMs = Date.now() - startTime;
+        const tokensUsed = response.usage?.total_tokens || 0;
+
+        return {
+            analyses,
+            processingTimeMs,
+            tokensUsed,
+        };
+    } catch(error: any) {
+        console.error("[OpenAI] Axis batch analysis failed:", error);
+
+        if (error.status === 429) {
             throw new AnalysisError(
-                "OpenAI axis batch analysis failed",
-                "OPENAI_AXIS_BATCH_ANALYSIS_ERROR",
+                "OpenAI API quota exceeded",
+                "OPENAI_QUOTA_EXCEEDED",
                 error
             );
         }
+
+        throw new AnalysisError(
+            "OpenAI axis batch analysis failed",
+            "OPENAI_AXIS_BATCH_ANALYSIS_ERROR",
+            error
+        );
     }
+}
 
     private labelToScore(label: StanceLabel): SentimentScore {
-        switch (label) {
-            case "Support": return 0.6;
-            case "Oppose": return -0.6;
-            case "Neutral": return 0.0;
-            case "Unknown": return 0.0;
-        }
+    switch (label) {
+        case "Support": return 0.6;
+        case "Oppose": return -0.6;
+        case "Neutral": return 0.0;
+        case "Unknown": return 0.0;
+        default: return 0.0;
     }
+}
 
-    private calculateWeightedScore(score: SentimentScore, likeCount: number): SentimentScore {
-        if (likeCount === 0) return score;
-        const weight = 1 + Math.log10(likeCount + 1) * 0.2;
-        const weighted = score * weight;
-        return Math.max(-1, Math.min(1, weighted)) as SentimentScore;
-    }
+    private calculateWeightedScore(score: number, likeCount: number): SentimentScore {
+    if (likeCount === 0) return score as SentimentScore;
+    const weight = 1 + Math.log10(likeCount + 1) * 0.2;
+    const weighted = score * weight;
+    return Math.max(-1, Math.min(1, weighted)) as SentimentScore;
+}
 }
 
 /**

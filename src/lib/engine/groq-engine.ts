@@ -54,8 +54,15 @@ interface AxisGroqResponse extends GroqResponse {
     axisEvidence: string;
     reply_relation_to_parent?: string;
     replyRelation?: string;
+    reply_relation_to_parent?: string;
+    replyRelation?: string;
     speech_act?: string;
     speechAct?: string;
+    // New fields for reasoning
+    disclaimer?: string | null;
+    main_claim?: string;
+    value_tradeoff?: { higher: string; lower: string } | null;
+    stance_type?: string;
 }
 
 export class GroqEngine implements AnalysisEngine {
@@ -424,8 +431,15 @@ export class GroqEngine implements AnalysisEngine {
                     };
                 }
 
-                // Use new two-axis logic for score if available
-                const finalScore = r.score !== undefined ? r.score : 0;
+                // Local Score Calculation (Rule C)
+                const directionMultiplier =
+                    r.stance_direction === "support" ? 1 :
+                        r.stance_direction === "oppose" ? -1 : 0;
+
+                const intensity = r.stance_intensity || 0;
+                // Overwrite score with local calculation
+                const finalScore = directionMultiplier * intensity;
+
                 const weightedScore = this.calculateWeightedScore(finalScore, likeCount);
 
                 // Lite mode: minimal fields only
@@ -434,19 +448,23 @@ export class GroqEngine implements AnalysisEngine {
                         commentId: r.commentId,
                         score: this.clampScore(finalScore),
                         weightedScore: weightedScore,
-                        emotions: ["neutral"] as EmotionTag[],
+                        emotions: ["neutral"] as EmotionTag[], // Placeholder
                         isSarcasm: false,
-                        reason: undefined,
+                        reason: undefined, // No reason in lite mode
                         label: r.label || "Unknown",
                         confidence: r.confidence || 0.5,
-                        axisEvidence: undefined,
+                        axisEvidence: undefined, // No evidence in lite mode
                         replyRelation: undefined,
                         speechAct: undefined,
                         stanceDirection: r.stance_direction,
-                        stanceIntensity: r.stance_intensity,
+                        stanceIntensity: intensity,
                         emotionPolarity: r.emotion_polarity,
                         target: r.target,
                         confidenceLevel: r.confidenceLevel,
+                        disclaimer: undefined,
+                        mainClaim: undefined,
+                        valueTradeoff: undefined,
+                        stanceType: undefined
                     };
                 }
 
@@ -459,7 +477,7 @@ export class GroqEngine implements AnalysisEngine {
                     reason: r.reason,
                     label: r.label,
                     stanceDirection: r.stance_direction,
-                    stanceIntensity: r.stance_intensity,
+                    stanceIntensity: intensity,
                     emotionPolarity: r.emotion_polarity,
                     target: r.target,
                     confidenceLevel: r.confidenceLevel,
@@ -467,11 +485,17 @@ export class GroqEngine implements AnalysisEngine {
                     axisEvidence: r.axisEvidence,
                     replyRelation: (r.reply_relation_to_parent || r.replyRelation) as any,
                     speechAct: (r.speech_act || r.speechAct) as any,
+                    // New fields
+                    disclaimer: r.disclaimer || undefined,
+                    mainClaim: r.main_claim,
+                    valueTradeoff: r.value_tradeoff,
+                    stanceType: r.stance_type as any,
                 };
             });
 
             // Pass 2: Apply stance synthesis for replies
             console.log(`[Groq] Applying stance synthesis for thread-aware analysis...`);
+
             analyses = applyStanceSynthesis(analyses, sortedComments);
 
             // Recalculate weighted scores after synthesis
@@ -648,11 +672,14 @@ Return JSON in this exact format:
   "supportedValues": "...",
   "protagonists": ["..."],
   "antagonists": ["..."],
-  "coreValues": ["..."],
-  "negativeValues": ["..."],
-  "stanceRules": ["..."],
-  "lexiconHints": ["..."],
-  "caveats": ["..."]
+  "coreValues": ["Value1", "Value2"],
+  "negativeValues": ["Value1", "Value2"],
+  "valuePriority": ["Highest Value", "Medium Value", "Lowest Value"],
+  "stanceRules": ["Rule1", "Rule2"],
+  "lexiconHints": ["Term1", "Term2"],
+  "antagonistAliases": {"name": ["alias1"]},
+  "butMarkers": ["but", "however"],
+  "caveats": ["Caveat1", "Caveat2"]
 }`;
 
         try {
@@ -677,8 +704,11 @@ Return JSON in this exact format:
                 axisType: "critic" | "education" | "other";
                 coreValues: string[];
                 negativeValues: string[];
+                valuePriority: string[];
                 stanceRules: string[];
                 lexiconHints: string[];
+                antagonistAliases: Record<string, string[]>;
+                butMarkers: string[];
                 caveats: string[];
             }>(text);
 
@@ -694,8 +724,11 @@ Return JSON in this exact format:
                 antagonists: parsed.antagonists || [],
                 coreValues: parsed.coreValues || [],
                 negativeValues: parsed.negativeValues || [],
+                valuePriority: parsed.valuePriority || [],
                 stanceRules: parsed.stanceRules || [],
                 lexiconHints: parsed.lexiconHints || [],
+                antagonistAliases: parsed.antagonistAliases,
+                butMarkers: parsed.butMarkers,
                 caveats: parsed.caveats || [],
                 generatedAt: new Date().toISOString(),
             };
@@ -743,6 +776,7 @@ Return JSON in this exact format:
                 antagonists: [],
                 coreValues: [],
                 negativeValues: [],
+                valuePriority: [],
                 stanceRules: [],
                 lexiconHints: [],
                 caveats: [],

@@ -75,6 +75,10 @@ export interface AxisProfile {
   negativeValues: string[]; // Negative values criticized by creator
   stanceRules: string[]; // Explicit rules for judging stance
   lexiconHints: string[]; // Key terms for this specific video
+  // Thought Map extensions
+  valuePriority: string[]; // Ordered list of values from highest to lowest priority
+  antagonistAliases?: Record<string, string[]>; // e.g. {"antagonist_name": ["alias1", "alias2"]}
+  butMarkers?: string[]; // e.g. ["but", "however", "although", "とは思うが"]
   caveats: string[]; // Specific instructions for edge cases
   generatedAt: string;
 }
@@ -94,6 +98,12 @@ export interface SentimentAnalysis {
   emotionPolarity?: "positive" | "negative" | "mixed" | "none";
   target?: "creator" | "antagonist" | "values" | "topic" | "parent_author" | "other" | "unknown";
   confidenceLevel?: "high" | "medium" | "low";
+
+  // Intermediate reasoning (Claim Extraction)
+  disclaimer?: string;
+  mainClaim?: string;
+  valueTradeoff?: { higher: string; lower: string } | null;
+  stanceType?: "personal_support" | "pragmatic_support" | "value_priority_support" | "antagonist_attack_support" | "meta_norm_support" | "weak_oppose" | "neutral_unrelated" | "unknown_unclear";
   confidence?: number; // Numeric 0.0-1.0
   axisEvidence?: string; // Evidence for stance judgment
   replyRelation?: ReplyRelation; // Relation to parent comment
