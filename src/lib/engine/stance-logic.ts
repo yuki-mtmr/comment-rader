@@ -184,11 +184,11 @@ export function applyStanceSynthesis(
  *
  * This helps prevent issues in 2-pass batch processing
  */
-export function sortCommentsByThreadOrder(
-    comments: Array<{ id: string; parentId?: string }>
-): Array<{ id: string; parentId?: string }> {
-    const topLevel: Array<{ id: string; parentId?: string }> = [];
-    const replies: Array<{ id: string; parentId?: string }> = [];
+export function sortCommentsByThreadOrder<T extends { id: string; parentId?: string }>(
+    comments: T[]
+): T[] {
+    const topLevel: T[] = [];
+    const replies: T[] = [];
 
     comments.forEach(c => {
         if (c.parentId) {

@@ -7,9 +7,7 @@
 import type { AnalysisEngine } from "./types";
 import type { AnalysisEngineConfig } from "@/types";
 import { MockEngine } from "./mock-engine";
-import { GeminiEngine, createGeminiEngine } from "./gemini-engine";
-import { GroqEngine, createGroqEngine } from "./groq-engine";
-import { OpenAIEngine, createOpenAIEngine } from "./openai-engine";
+import { AnalysisService } from "../service/analysis-service";
 
 export type EngineType = "mock" | "gemini" | "openai" | "groq";
 
@@ -26,22 +24,13 @@ export function createAnalysisEngine(config?: EngineFactoryConfig): AnalysisEngi
   // Determine engine type from config or environment
   const engineType = config?.type || getEngineTypeFromEnv();
 
-  switch (engineType) {
-    case "mock":
-      return new MockEngine(config?.engineConfig);
-
-    case "gemini":
-      return createGeminiEngine(config?.apiKey, config?.engineConfig);
-
-    case "groq":
-      return createGroqEngine(config?.apiKey, config?.engineConfig);
-
-    case "openai":
-      return createOpenAIEngine(config?.apiKey, config?.engineConfig);
-
-    default:
-      throw new Error(`Unknown engine type: ${engineType}`);
+  if (engineType === "mock") {
+    return new MockEngine(config?.engineConfig);
   }
+
+  // All LLM engines are now handled by the unified AnalysisService
+  // using Vercel AI SDK (with provider selection handled via env vars)
+  return new AnalysisService(config?.engineConfig);
 }
 
 /**

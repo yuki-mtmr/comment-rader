@@ -6,27 +6,27 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recha
 import { useLanguage } from "@/lib/i18n/context";
 
 interface SentimentDonutChartProps {
-  positive: number;
+  support: number;
   neutral: number;
-  negative: number;
+  oppose: number;
 }
 
 export function SentimentDonutChart({
-  positive,
+  support,
   neutral,
-  negative,
+  oppose,
 }: SentimentDonutChartProps) {
   const { t } = useLanguage();
 
   const data = [
-    { name: t.charts.positive, value: positive, color: "hsl(var(--sentiment-positive))" },
+    { name: t.charts.positive, value: support, color: "hsl(var(--sentiment-positive))" },
     { name: t.charts.neutral, value: neutral, color: "hsl(var(--sentiment-neutral))" },
-    { name: t.charts.negative, value: negative, color: "hsl(var(--sentiment-negative))" },
+    { name: t.charts.negative, value: oppose, color: "hsl(var(--sentiment-negative))" },
   ];
 
   const COLORS = data.map(item => item.color);
 
-  const total = positive + neutral + negative;
+  const total = support + neutral + oppose;
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {

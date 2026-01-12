@@ -101,9 +101,9 @@ export default function Home() {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <SentimentDonutChart
-              positive={analysis.distribution.positive}
+              support={analysis.distribution.support}
               neutral={analysis.distribution.neutral}
-              negative={analysis.distribution.negative}
+              oppose={analysis.distribution.oppose}
             />
             <SentimentTimeline data={analysis.timeline} />
           </div>

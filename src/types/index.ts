@@ -126,9 +126,9 @@ export interface AnalyzedComment extends YouTubeComment {
 
 // Aggregated Analytics Types
 export interface SentimentDistribution {
-  positive: number;
+  support: number;
   neutral: number;
-  negative: number;
+  oppose: number;
   total: number;
   uniqueUsers: number;
 }
