@@ -149,58 +149,52 @@ Return only the JSON object:`;
  */
 export const AXIS_SYSTEM_PROMPT = `You are an advanced Stance Analysis agent for YouTube comments.
 
-Your task is to determine each comment's stance (Support/Oppose/Neutral/Unknown) toward the video's MAIN AXIS.
+Your task is to determine each comment's stance (Support/Oppose/Neutral/Unknown) toward the video's MAIN AXIS using a two-axis model (Direction & Intensity).
 
-### CORE CONCEPT: AXIS vs CREATOR
+### 1. CORE CONCEPT: AXIS STANCE
 - DO NOT judge sentiment toward the creator as a person.
-- JUDGE the commenter's position on the MAIN AXIS (the central claim or topic).
+- JUDGE the commenter's alignment with the video's core claim (axis_statement).
 
-### OUTPUT SCHEMA:
+### 2. OUTPUT SCHEMA:
 {
   "comments": [
     {
       "commentId": "...",
-      "label": "Support" | "Oppose" | "Neutral" | "Unknown",
-      "confidence": 0.85,
-      "axisEvidence": "User agrees with [creator's position] by saying '...'",
-      "replyRelation": "agree" | "disagree" | "clarify" | "question" | "unrelated",
-      "speechAct": "assertion" | "question" | "joke" | "sarcasm" | "insult" | "praise" | "other",
-      "score": 0.8,
-      "emotions": ["supportive"],
-      "isSarcasm": false,
-      "reason": "Brief explanation"
+      "stance_direction": "support" | "oppose" | "neutral" | "unknown",
+      "stance_intensity": 0.0 to 1.0,  // Degree of alignment/opposition
+      "emotion_polarity": "positive" | "negative" | "mixed" | "none",
+      "target": "creator" | "antagonist" | "values" | "topic" | "parent_author" | "other" | "unknown",
+      "speech_act": "praise" | "attack" | "question" | "sarcasm" | "quote" | "analysis" | "meta" | "spam",
+      "reason": "Target:[x]. Direction:[x]. Key Evidence:[x].",
+      "label": "Support" | "Oppose" | "Neutral" | "Unknown", // Combined label
+      "confidenceLevel": "high" | "medium" | "low",
+      "axisEvidence": "Citation from text",
+      "reply_relation_to_parent": "agree" | "disagree" | "unclear",
+      "score": -1.0 to 1.0, // Calculated as: intensity * (direction == support ? 1 : -1)
+      "emotions": ["anger", "supportive", etc.],
+      "isSarcasm": boolean
     }
   ]
 }
 
-### STANCE LABELS:
-- "Support": Commenter AGREES with the creator's position on the axis
-- "Oppose": Commenter DISAGREES with the creator's position on the axis
-- "Neutral": Comment is about the topic but doesn't take a clear stance
-- "Unknown": Cannot determine stance (off-topic, unclear, insufficient context)
+### 3. ENTITY & VALUE ALIGNMENT (CRITICAL):
+- Support for [Antagonists] or [Negative Values] = OPPOSING the axis.
+- Attacks on [Antagonists] or [Negative Values] = SUPPORTING the axis (Strong intensity).
+- Support for [Protagonists] or [Core Values] = SUPPORTING the axis.
+- Praising the Creator's effort/personality = SUPPORTING the axis (Low intensity).
+- Agreeing with the "feeling" (e.g., "I get why you are angry") = SUPPORTING the axis (Low intensity).
 
-### REPLY LOGIC:
-- If comment has "parentText", analyze the relationship to parent first
-- replyRelation values:
-  - "agree": Affirms or builds on parent's point
-  - "disagree": Contradicts or argues against parent
-  - "clarify": Adds context or explanation
-  - "question": Asks for more info
-  - "unrelated": Changes topic
+### 4. NEUTRAL SEGMENTATION:
+- weak_support: Praise for creator, pragmatic agreement, "it can't be helped" → direction: support, intensity: 0.1-0.3.
+- neutral_unrelated: Off-topic or meta-comments → direction: neutral, intensity: 0.0.
+- unknown: Completely unclear or instructions not followed → direction: unknown, intensity: 0.0.
 
-### SCORE CONVERSION (for backward compatibility):
-- Support → score: +0.7 to +1.0
-- Neutral → score: -0.3 to +0.3
-- Oppose → score: -1.0 to -0.7
-- Unknown → score: 0.0
+### 5. LINGUISTIC RULES:
+- "こいつ/あいつ/お前" usually indicates an [Antagonist] in this community context.
+- Use "lexicon_hints" to identify video-specific coded language.
+- "皮肉 (Sarcasm)" is usually "Oppose" if directed at Creator, and "Support" if directed at Antagonist.
 
-### CRITICAL RULES:
-1. If context is unclear, use "Unknown" - do NOT guess
-2. Sarcasm detection: Positive words used to mock = "Oppose" + isSarcasm: true
-3. Thread awareness: Parent stance affects child stance interpretation
-4. Evidence: Always cite specific phrases from the comment in axisEvidence
-
-Return ONLY valid JSON. No preamble. No trailing commas.`;
+Return ONLY valid JSON. No preamble.`;
 
 /**
  * NEW: Create Axis-based batch prompt
@@ -210,17 +204,21 @@ export function createAxisBatchPrompt(
   axisProfile: AxisProfile,
   videoContext?: { title: string; channelName: string; description?: string; summary?: string }
 ): string {
-  const contextInfo = `### AXIS PROFILE (PRIMARY REFERENCE)
-Video ID: ${axisProfile.videoId}
-Main Axis: "${axisProfile.mainAxis}"
-Creator's Position: "${axisProfile.creatorPosition}"
-${axisProfile.targetOfCriticism ? `Target of Criticism: "${axisProfile.targetOfCriticism}"` : ""}
-${axisProfile.supportedValues ? `Supported Values: "${axisProfile.supportedValues}"` : ""}
+  const contextInfo = `### AXIS MAP (THOUGHT PROFILE)
+Axis Statement: "${axisProfile.axisStatement}"
+Axis Type: ${axisProfile.axisType}
+Protagonists: ${JSON.stringify(axisProfile.protagonists)}
+Antagonists: ${JSON.stringify(axisProfile.antagonists)}
+Core Values (Support these): ${JSON.stringify(axisProfile.coreValues)}
+Negative Values (Oppose these): ${JSON.stringify(axisProfile.negativeValues)}
+Stance Rules: ${JSON.stringify(axisProfile.stanceRules)}
+Lexicon Hints: ${JSON.stringify(axisProfile.lexiconHints)}
+Caveats: ${JSON.stringify(axisProfile.caveats)}
 
 ### VIDEO METADATA
 Creator: "${videoContext?.channelName || "Unknown"}"
 Title: "${videoContext?.title || "Unknown"}"
-${videoContext?.summary ? `Summary: ${videoContext.summary}` : ""}
+Summary: ${videoContext?.summary || "N/A"}
 
 `;
 
@@ -229,20 +227,94 @@ ${videoContext?.summary ? `Summary: ${videoContext.summary}` : ""}
     author: c.author,
     text: c.text,
     parentText: c.parentText || null,
-    parentId: c.parentId || null,
   }));
 
   return `${contextInfo}
-Analyze ${comments.length} comments based on their stance toward the MAIN AXIS.
+Analyze ${comments.length} comments using the AXIS MAP.
 
-TASK:
-1. For each comment, determine if the user supports or opposes the creator's position on the axis
-2. If the comment is a reply (has parentText), first analyze replyRelation to parent
-3. Provide evidence from the comment text in axisEvidence
-4. Assign confidence (0.0-1.0) based on clarity of stance
+MISSION:
+- Identify if the comment supports or opposes the Axis Statement.
+- Use Protagonists/Antagonists and Values to determine alignment.
+- A reply's relation to parent MUST be correctly identified for secondary pass.
 
 Comments to analyze:
 ${JSON.stringify(commentsJson, null, 2)}
 
-Return JSON following the schema in the system prompt.`;
+Return JSON as defined in system prompt.`;
+}
+
+/**
+ * NEW: Lite Batch Prompt for minimal token output (statistical sampling)
+ * Used for lower-priority comments to reduce costs
+ */
+export function createLiteBatchPrompt(
+  comments: YouTubeComment[],
+  videoContext?: { title: string; channelName: string; description?: string; summary?: string }
+): string {
+  const contextInfo = videoContext
+    ? `### VIDEO CONTEXT
+Creator: "${videoContext.channelName}"
+Title: "${videoContext.title}"
+Summary: ${videoContext.summary || "No summary available."}
+
+`
+    : "";
+
+  const commentsJson = comments.map((c) => ({
+    commentId: c.id,
+    text: c.text,
+  }));
+
+  return `${contextInfo}TASK: Statistical sentiment analysis. Return ONLY score for each comment. No explanations needed.
+
+OUTPUT FORMAT (JSON only):
+{
+  "comments": [
+    {"commentId": "...", "score": 0.8},
+    {"commentId": "...", "score": -0.5}
+  ]
+}
+
+Comments:
+${JSON.stringify(commentsJson, null, 2)}
+
+CRITICAL: Return minimal JSON with commentId and score ONLY. No reason, no emotions, no extra fields.`;
+}
+
+/**
+ * NEW: Lite Axis Batch Prompt for minimal token output
+ * Returns only label and score for statistical analysis
+ */
+export function createLiteAxisBatchPrompt(
+  comments: YouTubeComment[],
+  axisProfile: AxisProfile,
+  videoContext?: { title: string; channelName: string; description?: string; summary?: string }
+): string {
+  const contextInfo = `### AXIS PROFILE
+Main Axis: "${axisProfile.mainAxis}"
+Creator's Position: "${axisProfile.creatorPosition}"
+
+`;
+
+  const commentsJson = comments.map((c) => ({
+    commentId: c.id,
+    text: c.text,
+  }));
+
+  return `${contextInfo}TASK: Statistical stance analysis. Return ONLY label and score for each comment.
+
+OUTPUT FORMAT (JSON only):
+{
+  "comments": [
+    {"commentId": "...", "label": "Support", "score": 0.85},
+    {"commentId": "...", "label": "Oppose", "score": -0.8}
+  ]
+}
+
+Stance labels: "Support" | "Oppose" | "Neutral" | "Unknown"
+
+Comments:
+${JSON.stringify(commentsJson, null, 2)}
+
+CRITICAL: Return minimal JSON with commentId, label, and score ONLY. No reason, no evidence, no emotions.`;
 }

@@ -62,15 +62,39 @@ export async function POST(request: NextRequest) {
     });
     console.log(`[API] Context ready: ${summary.slice(0, 100)}...`);
 
-    // Fetch comments
-    const maxComments = body.maxComments || 100;
-    const comments = await youtubeClient.getComments(videoId, { maxComments });
+    // Check if Axis-based mode is enabled
+    const useAxisMode = process.env.USE_AXIS_MODE === 'true';
+    let axisProfile;
+
+    if (useAxisMode && engine.generateAxisProfile) {
+      console.log(`[API] Generating Axis Profile for stance analysis...`);
+      axisProfile = await engine.generateAxisProfile({
+        id: videoId,
+        title: video.title,
+        channelName: video.channelName,
+        description: video.description,
+        transcript: transcript,
+      });
+      console.log(`[API] Axis Profile generated: ${axisProfile.mainAxis}`);
+    }
+
+    // Fetch comments with tiered sampling limits
+    const maxComments = parseInt(process.env.MAX_COMMENTS || "1000");
+    const richTierThreshold = parseInt(process.env.RICH_TIER_THRESHOLD || "200");
+
+    console.log(`[API] Tiered sampling: max=${maxComments}, richTier=${richTierThreshold}`);
+
+    let comments = await youtubeClient.getComments(videoId, { maxComments });
 
     if (comments.length === 0) {
       return NextResponse.json({
         error: "No comments found for this video",
       }, { status: 404 });
     }
+
+    // TIERED SAMPLING: Sort by likeCount descending
+    comments = comments.sort((a, b) => b.likeCount - a.likeCount);
+    console.log(`[API] Sorted ${comments.length} comments by likeCount. Top comment has ${comments[0]?.likeCount} likes.`);
 
     // Populate parentText for replies to provide context to the LLM
     const commentMap = new Map(comments.map(c => [c.id, c.text]));
@@ -80,22 +104,49 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    // Analyze comments in batches
+    // Analyze comments in batches with tiered sampling
     const batchSize = engine.getConfig().batchSize;
     const analyzedComments: AnalyzedComment[] = [];
     let isPartialResult = false;
 
     for (let i = 0; i < comments.length; i += batchSize) {
       const batch = comments.slice(i, i + batchSize);
-      const result = await engine.analyzeBatch({
-        comments: batch,
-        videoContext: {
-          title: video.title,
-          channelName: video.channelName,
-          description: video.description,
-          summary: summary,
-        },
-      });
+
+      // Determine if this batch should use lite mode
+      // Rich Tier: first richTierThreshold comments (sorted by likeCount)
+      // Lite Tier: remaining comments
+      const isLiteBatch = i >= richTierThreshold;
+      const tier = isLiteBatch ? "Lite" : "Rich";
+
+      console.log(`[API] Processing batch ${Math.floor(i / batchSize) + 1} (${tier} Tier, indices ${i}-${i + batch.length - 1})...`);
+
+      // Use Axis-based analysis if enabled, otherwise use legacy sentiment analysis
+      let result;
+      if (useAxisMode && axisProfile && (engine as any).analyzeAxisBatch) {
+        console.log(`[API] Using Axis-based analysis (${tier} mode)...`);
+        result = await (engine as any).analyzeAxisBatch({
+          comments: batch,
+          isLite: isLiteBatch,
+          videoContext: {
+            title: video.title,
+            channelName: video.channelName,
+            description: video.description,
+            summary: summary,
+          },
+        }, axisProfile);
+      } else {
+        console.log(`[API] Using legacy sentiment analysis (${tier} mode)...`);
+        result = await engine.analyzeBatch({
+          comments: batch,
+          isLite: isLiteBatch,
+          videoContext: {
+            title: video.title,
+            channelName: video.channelName,
+            description: video.description,
+            summary: summary,
+          },
+        });
+      }
 
       if (result.isPartial) {
         isPartialResult = true;
@@ -123,13 +174,19 @@ export async function POST(request: NextRequest) {
           emotions: analysis.emotions,
           isSarcasm: analysis.isSarcasm,
           isRepeatUser,
+          // Axis-based fields (if available)
+          label: analysis.label,
+          confidence: analysis.confidence,
+          axisEvidence: analysis.axisEvidence,
+          replyRelation: analysis.replyRelation,
         });
       }
 
-      // Add a delay between batches to stay under 15 RPM (free tier limit)
-      // 4.5 seconds ensures we stay well below 15 RPM even with processing overhead
+      // Add a delay between batches to stay under rate limits
+      // Gemini free tier needs ~4.5s (15 RPM), others like OpenAI/Groq can be much faster
+      const delay = engine.name === 'GeminiEngine' ? 4500 : 200;
       if (i + batchSize < comments.length) {
-        await new Promise(resolve => setTimeout(resolve, 4500));
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
 
@@ -208,9 +265,9 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      if (apiError.code === "GEMINI_QUOTA_EXCEEDED") {
+      if (apiError.code === "GEMINI_QUOTA_EXCEEDED" || apiError.code === "GROQ_QUOTA_EXCEEDED" || apiError.code === "OPENAI_QUOTA_EXCEEDED" || apiError.code === "API_QUOTA_EXCEEDED") {
         return NextResponse.json(
-          { error: "Gemini API quota exceeded. Please wait a minute before trying again." },
+          { error: "API quota exceeded. Please wait a minute before trying again." },
           { status: 429 }
         );
       }

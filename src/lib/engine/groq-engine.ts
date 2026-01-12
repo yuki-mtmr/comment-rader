@@ -20,7 +20,9 @@ import {
     createBatchPrompt,
     createSingleCommentPrompt,
     AXIS_SYSTEM_PROMPT,
-    createAxisBatchPrompt
+    createAxisBatchPrompt,
+    createLiteBatchPrompt,
+    createLiteAxisBatchPrompt
 } from "@/lib/llm/prompts";
 import { AnalysisError } from "@/types";
 import { applyStanceSynthesis, sortCommentsByThreadOrder } from "./stance-logic";
@@ -34,7 +36,6 @@ const DEFAULT_CONFIG: AnalysisEngineConfig = {
 const DEFAULT_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
 
 interface GroqResponse {
-    id: number;
     commentId: string;
     score: number;
     emotions: string[];
@@ -44,9 +45,16 @@ interface GroqResponse {
 
 interface AxisGroqResponse extends GroqResponse {
     label: StanceLabel;
+    stance_direction?: "support" | "oppose" | "neutral" | "unknown";
+    stance_intensity?: number;
+    emotion_polarity?: "positive" | "negative" | "mixed" | "none";
+    target?: "creator" | "antagonist" | "values" | "topic" | "parent_author" | "other" | "unknown";
+    confidenceLevel?: "high" | "medium" | "low";
     confidence: number;
     axisEvidence: string;
+    reply_relation_to_parent?: string;
     replyRelation?: string;
+    speech_act?: string;
     speechAct?: string;
 }
 
@@ -180,10 +188,14 @@ export class GroqEngine implements AnalysisEngine {
             };
         }
 
-        const prompt = createBatchPrompt(request.comments, request.videoContext);
+        // Use lite prompt if requested (for cost optimization)
+        const prompt = request.isLite
+            ? createLiteBatchPrompt(request.comments, request.videoContext)
+            : createBatchPrompt(request.comments, request.videoContext);
 
         try {
-            console.log(`[Groq] Analyzing batch of ${request.comments.length} comments...`);
+            const mode = request.isLite ? "Lite" : "Full";
+            console.log(`[Groq] Analyzing batch of ${request.comments.length} comments (${mode} mode)...`);
             const completion = await this.client.chat.completions.create({
                 messages: [
                     { role: "system", content: SYSTEM_PROMPT },
@@ -228,6 +240,19 @@ export class GroqEngine implements AnalysisEngine {
                     };
                 }
 
+                // Lite mode: minimal fields only
+                if (request.isLite) {
+                    return {
+                        commentId: item.commentId,
+                        score: this.clampScore(item.score),
+                        weightedScore: this.calculateWeightedScore(item.score, comment.likeCount),
+                        emotions: ["neutral"] as EmotionTag[], // Placeholder for lite mode
+                        isSarcasm: false,
+                        reason: undefined, // No reason in lite mode
+                    };
+                }
+
+                // Full mode: all fields
                 return {
                     commentId: item.commentId,
                     score: this.clampScore(item.score),
@@ -341,10 +366,14 @@ export class GroqEngine implements AnalysisEngine {
             .map(ordered => request.comments.find(c => c.id === ordered.id))
             .filter((c): c is YouTubeComment => c !== undefined);
 
-        const prompt = createAxisBatchPrompt(sortedComments, axisProfile, request.videoContext);
+        // Use lite prompt if requested (for cost optimization)
+        const prompt = request.isLite
+            ? createLiteAxisBatchPrompt(sortedComments, axisProfile, request.videoContext)
+            : createAxisBatchPrompt(sortedComments, axisProfile, request.videoContext);
 
         try {
-            console.log(`[Groq] Axis-based analysis of ${request.comments.length} comments...`);
+            const mode = request.isLite ? "Lite" : "Full";
+            console.log(`[Groq] Axis-based analysis of ${request.comments.length} comments (${mode} mode)...`);
             const completion = await this.client.chat.completions.create({
                 messages: [
                     { role: "system", content: AXIS_SYSTEM_PROMPT },
@@ -375,11 +404,13 @@ export class GroqEngine implements AnalysisEngine {
 
             console.log(`[Groq] Successfully parsed ${parsedArray.length} axis analysis items`);
 
-            // Pass 1: Create initial analyses
-            let analyses: SentimentAnalysis[] = sortedComments.map((comment) => {
-                const item = parsedArray.find((p) => p.commentId === comment.id);
+            const commentMap = new Map(sortedComments.map(c => [c.id, c]));
 
-                if (!item) {
+            let analyses: SentimentAnalysis[] = sortedComments.map((comment) => {
+                const r = parsedArray.find((p) => p.commentId === comment.id);
+                const likeCount = comment.likeCount || 0;
+
+                if (!r) {
                     return {
                         commentId: comment.id,
                         score: 0,
@@ -393,23 +424,49 @@ export class GroqEngine implements AnalysisEngine {
                     };
                 }
 
-                // Convert label to score for backward compatibility
-                const scoreFromLabel = this.labelToScore(item.label);
-                const finalScore = item.score !== undefined ? item.score : scoreFromLabel;
+                // Use new two-axis logic for score if available
+                const finalScore = r.score !== undefined ? r.score : 0;
+                const weightedScore = this.calculateWeightedScore(finalScore, likeCount);
+
+                // Lite mode: minimal fields only
+                if (request.isLite) {
+                    return {
+                        commentId: r.commentId,
+                        score: this.clampScore(finalScore),
+                        weightedScore: weightedScore,
+                        emotions: ["neutral"] as EmotionTag[],
+                        isSarcasm: false,
+                        reason: undefined,
+                        label: r.label || "Unknown",
+                        confidence: r.confidence || 0.5,
+                        axisEvidence: undefined,
+                        replyRelation: undefined,
+                        speechAct: undefined,
+                        stanceDirection: r.stance_direction,
+                        stanceIntensity: r.stance_intensity,
+                        emotionPolarity: r.emotion_polarity,
+                        target: r.target,
+                        confidenceLevel: r.confidenceLevel,
+                    };
+                }
 
                 return {
-                    commentId: item.commentId,
+                    commentId: r.commentId,
                     score: this.clampScore(finalScore),
-                    weightedScore: this.calculateWeightedScore(finalScore, comment.likeCount),
-                    emotions: (item.emotions || ["neutral"]) as EmotionTag[],
-                    isSarcasm: !!item.isSarcasm,
-                    reason: item.reason || "No reason provided",
-                    // New axis fields
-                    label: item.label || "Unknown",
-                    confidence: item.confidence || 0.5,
-                    axisEvidence: item.axisEvidence || "",
-                    replyRelation: item.replyRelation as any,
-                    speechAct: item.speechAct as any,
+                    weightedScore: weightedScore,
+                    emotions: (r.emotions || []) as EmotionTag[],
+                    isSarcasm: !!r.isSarcasm,
+                    reason: r.reason,
+                    label: r.label,
+                    stanceDirection: r.stance_direction,
+                    stanceIntensity: r.stance_intensity,
+                    emotionPolarity: r.emotion_polarity,
+                    target: r.target,
+                    confidenceLevel: r.confidenceLevel,
+                    confidence: r.confidence,
+                    axisEvidence: r.axisEvidence,
+                    replyRelation: (r.reply_relation_to_parent || r.replyRelation) as any,
+                    speechAct: (r.speech_act || r.speechAct) as any,
                 };
             });
 
@@ -572,15 +629,30 @@ Video Information:
 Please identify:
 1. mainAxis: The central claim or question this video addresses (e.g., "Is traditional education effective?")
 2. creatorPosition: The creator's stance on this axis (e.g., "Practical learning is more important than theory")
-3. targetOfCriticism: Who or what is the creator criticizing? (e.g., "People who only study theory without practice")
 4. supportedValues: What values or behaviors is the creator promoting? (e.g., "Action-oriented learning, hands-on experience")
+5. protagonists: List of specific people or groups whom the creator supports or aligns with (e.g., "Colleagues", "Supporters")
+6. antagonists: List of specific people or groups whom the creator explicitly criticizes (e.g., "Opponent Name", "Disbelievers")
+7. coreValues: Specific abstract values the creator promotes (e.g. "integrity", "action")
+8. negativeValues: Specific abstract values the creator criticizes (e.g. "hypocrisy", "laziness")
+9. stanceRules: Short rules to distinguish Support from Oppose for this video
+10. lexiconHints: Terms that have special meaning in this video
+11. caveats: Special instructions for ambiguous comments
 
 Return JSON in this exact format:
 {
+  "axisStatement": "...",
+  "axisType": "critic" | "education" | "other",
   "mainAxis": "...",
   "creatorPosition": "...",
   "targetOfCriticism": "...",
-  "supportedValues": "..."
+  "supportedValues": "...",
+  "protagonists": ["..."],
+  "antagonists": ["..."],
+  "coreValues": ["..."],
+  "negativeValues": ["..."],
+  "stanceRules": ["..."],
+  "lexiconHints": ["..."],
+  "caveats": ["..."]
 }`;
 
         try {
@@ -599,14 +671,32 @@ Return JSON in this exact format:
                 creatorPosition: string;
                 targetOfCriticism?: string;
                 supportedValues?: string;
+                protagonists: string[];
+                antagonists: string[];
+                axisStatement: string;
+                axisType: "critic" | "education" | "other";
+                coreValues: string[];
+                negativeValues: string[];
+                stanceRules: string[];
+                lexiconHints: string[];
+                caveats: string[];
             }>(text);
 
             return {
                 videoId: video.id,
                 mainAxis: parsed.mainAxis || "General discussion about " + video.title,
+                axisStatement: parsed.axisStatement || video.title,
+                axisType: parsed.axisType || "other",
                 creatorPosition: parsed.creatorPosition || "The creator's perspective",
                 targetOfCriticism: parsed.targetOfCriticism,
                 supportedValues: parsed.supportedValues,
+                protagonists: parsed.protagonists || [],
+                antagonists: parsed.antagonists || [],
+                coreValues: parsed.coreValues || [],
+                negativeValues: parsed.negativeValues || [],
+                stanceRules: parsed.stanceRules || [],
+                lexiconHints: parsed.lexiconHints || [],
+                caveats: parsed.caveats || [],
                 generatedAt: new Date().toISOString(),
             };
         } catch (error: any) {
@@ -619,9 +709,18 @@ Return JSON in this exact format:
                         return {
                             videoId: video.id,
                             mainAxis: parsed.mainAxis || "General discussion about " + video.title,
+                            axisStatement: parsed.axisStatement || video.title,
+                            axisType: parsed.axisType || "other",
                             creatorPosition: parsed.creatorPosition || "The creator's perspective",
                             targetOfCriticism: parsed.targetOfCriticism,
                             supportedValues: parsed.supportedValues,
+                            protagonists: parsed.protagonists || [],
+                            antagonists: parsed.antagonists || [],
+                            coreValues: parsed.coreValues || [],
+                            negativeValues: parsed.negativeValues || [],
+                            stanceRules: parsed.stanceRules || [],
+                            lexiconHints: parsed.lexiconHints || [],
+                            caveats: parsed.caveats || [],
                             generatedAt: new Date().toISOString(),
                         };
                     } catch (e) {
@@ -635,7 +734,18 @@ Return JSON in this exact format:
             return {
                 videoId: video.id,
                 mainAxis: "Discussion about: " + video.title,
+                axisStatement: video.title,
+                axisType: "other",
                 creatorPosition: "The creator's perspective on " + video.title,
+                targetOfCriticism: undefined,
+                supportedValues: undefined,
+                protagonists: [],
+                antagonists: [],
+                coreValues: [],
+                negativeValues: [],
+                stanceRules: [],
+                lexiconHints: [],
+                caveats: [],
                 generatedAt: new Date().toISOString(),
             };
         }

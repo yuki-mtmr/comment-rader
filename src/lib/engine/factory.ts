@@ -9,6 +9,7 @@ import type { AnalysisEngineConfig } from "@/types";
 import { MockEngine } from "./mock-engine";
 import { GeminiEngine, createGeminiEngine } from "./gemini-engine";
 import { GroqEngine, createGroqEngine } from "./groq-engine";
+import { OpenAIEngine, createOpenAIEngine } from "./openai-engine";
 
 export type EngineType = "mock" | "gemini" | "openai" | "groq";
 
@@ -36,8 +37,7 @@ export function createAnalysisEngine(config?: EngineFactoryConfig): AnalysisEngi
       return createGroqEngine(config?.apiKey, config?.engineConfig);
 
     case "openai":
-      // TODO: Implement OpenAI engine in future
-      throw new Error("OpenAI engine not yet implemented. Use 'gemini', 'groq' or 'mock'.");
+      return createOpenAIEngine(config?.apiKey, config?.engineConfig);
 
     default:
       throw new Error(`Unknown engine type: ${engineType}`);

@@ -11,7 +11,7 @@ export const translations = {
         },
         quota: {
             title: "API Quota Limitation",
-            message: "Some comments were analyzed using a neutral fallback due to Gemini API rate limits. The overview is still representative, but individual analysis for some comments may be missing details.",
+            message: "Some comments were analyzed using a neutral fallback due to API rate limits. The overview is still representative, but individual analysis for some comments may be missing details.",
         },
         video: {
             views: "Views",
@@ -57,7 +57,7 @@ export const translations = {
         },
         quota: {
             title: "API利用制限",
-            message: "Gemini APIの利用制限により、一部のコメントは中立的な評価として処理されました。全体の傾向は把握可能ですが、個別の詳細な分析が欠けている場合があります。",
+            message: "APIの利用制限により、一部のコメントは中立的な評価として処理されました。全体の傾向は把握可能ですが、個別の詳細な分析が欠けている場合があります。",
         },
         video: {
             views: "再生回数",

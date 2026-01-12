@@ -64,9 +64,18 @@ export type SpeechAct = "assertion" | "question" | "joke" | "sarcasm" | "insult"
 export interface AxisProfile {
   videoId: string;
   mainAxis: string; // e.g., "この教育方針は有効か"
+  axisStatement: string; // Concise central claim
+  axisType: "critic" | "education" | "other";
   creatorPosition: string; // e.g., "座学より実践を重視すべき"
   targetOfCriticism?: string; // e.g., "理論ばかりで行動しない人"
   supportedValues?: string; // e.g., "実践的な学び、行動力"
+  protagonists: string[]; // List of people/groups on the creator's side
+  antagonists: string[]; // List of people/groups being criticized
+  coreValues: string[]; // Positive values promoted by creator
+  negativeValues: string[]; // Negative values criticized by creator
+  stanceRules: string[]; // Explicit rules for judging stance
+  lexiconHints: string[]; // Key terms for this specific video
+  caveats: string[]; // Specific instructions for edge cases
   generatedAt: string;
 }
 
@@ -77,9 +86,15 @@ export interface SentimentAnalysis {
   emotions: EmotionTag[];
   isSarcasm: boolean;
   reason?: string; // Why this sentiment was assigned
-  // New Axis-based fields
-  label?: StanceLabel; // Stance toward the main axis
-  confidence?: number; // 0.0 to 1.0
+
+  // New Enhanced Axis-based fields
+  label?: StanceLabel; // Standard Support/Oppose/Neutral/Unknown
+  stanceDirection?: "support" | "oppose" | "neutral" | "unknown";
+  stanceIntensity?: number; // 0.0 to 1.0
+  emotionPolarity?: "positive" | "negative" | "mixed" | "none";
+  target?: "creator" | "antagonist" | "values" | "topic" | "parent_author" | "other" | "unknown";
+  confidenceLevel?: "high" | "medium" | "low";
+  confidence?: number; // Numeric 0.0-1.0
   axisEvidence?: string; // Evidence for stance judgment
   replyRelation?: ReplyRelation; // Relation to parent comment
   speechAct?: SpeechAct; // Type of speech act
@@ -91,6 +106,11 @@ export interface AnalyzedComment extends YouTubeComment {
   emotions: EmotionTag[];
   isSarcasm: boolean;
   isRepeatUser?: boolean;
+  // Axis-based fields (when using axis analysis mode)
+  label?: StanceLabel;
+  confidence?: number;
+  axisEvidence?: string;
+  replyRelation?: ReplyRelation;
 }
 
 // Aggregated Analytics Types
@@ -135,6 +155,7 @@ export interface AnalysisEngineConfig {
 
 export interface BatchAnalysisRequest {
   comments: YouTubeComment[];
+  isLite?: boolean; // If true, return minimal fields for cost optimization
   videoContext?: {
     title: string;
     channelName: string;

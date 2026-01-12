@@ -48,6 +48,32 @@ export function synthesizeStance(
 }
 
 /**
+ * Enhanced synthesis using Direction and Intensity
+ */
+export function synthesizeBinaryStance(
+    parent: { direction: "support" | "oppose" | "neutral" | "unknown", intensity: number },
+    replyRelation: ReplyRelation
+): { direction: "support" | "oppose" | "neutral" | "unknown", intensity: number } {
+    if (replyRelation === "unrelated" || replyRelation === "clarify" || replyRelation === "question") {
+        return { direction: "neutral", intensity: 0 };
+    }
+
+    if (replyRelation === "agree") {
+        return { ...parent };
+    }
+
+    if (replyRelation === "disagree") {
+        let newDir = parent.direction;
+        if (parent.direction === "support") newDir = "oppose";
+        else if (parent.direction === "oppose") newDir = "support";
+
+        return { direction: newDir, intensity: parent.intensity };
+    }
+
+    return { direction: "unknown", intensity: 0 };
+}
+
+/**
  * Convert StanceLabel to SentimentScore for backward compatibility
  */
 export function labelToScore(label: StanceLabel): number {
@@ -106,32 +132,49 @@ export function applyStanceSynthesis(
 
         // Find parent analysis
         const parentAnalysis = analysisMap.get(comment.parentId);
-        if (!parentAnalysis || !parentAnalysis.label) {
-            // Parent not found or has no label - cannot synthesize
+        if (!parentAnalysis) {
             return analysis;
         }
 
-        // If this reply has no replyRelation, cannot synthesize
-        if (!analysis.replyRelation) {
+        const relation = analysis.replyRelation as ReplyRelation;
+        if (!relation) {
             return analysis;
         }
 
-        // Synthesize stance
-        const originalLabel = analysis.label;
+        // 1. Label-based synthesis (Legacy)
         const synthesizedLabel = synthesizeStance(
-            parentAnalysis.label,
-            analysis.replyRelation
+            parentAnalysis.label || "Unknown",
+            relation
         );
 
-        // Update the analysis with synthesized stance
+        // 2. Binary synthesis (New direction/intensity logic)
+        let finalDirection = analysis.stanceDirection;
+        let finalIntensity = analysis.stanceIntensity || 0;
+
+        if (parentAnalysis.stanceDirection && parentAnalysis.stanceDirection !== "unknown") {
+            const synthesized = synthesizeBinaryStance(
+                { direction: parentAnalysis.stanceDirection, intensity: parentAnalysis.stanceIntensity || 0 },
+                relation
+            );
+            finalDirection = synthesized.direction;
+            finalIntensity = synthesized.intensity;
+        }
+
+        // Final Score Calculation: intensity * direction_multiplier
+        const dirMultiplier = finalDirection === "support" ? 1 : finalDirection === "oppose" ? -1 : 0;
+        const newScore = finalIntensity * dirMultiplier;
+
+        // Update the analysis with synthesized values
         return {
             ...analysis,
             label: synthesizedLabel,
-            score: labelToScore(synthesizedLabel),
+            stanceDirection: finalDirection,
+            stanceIntensity: finalIntensity,
+            score: newScore,
             axisEvidence: analysis.axisEvidence
-                ? `[Thread Context: Parent was ${parentAnalysis.label}, Reply ${analysis.replyRelation}] ${analysis.axisEvidence}`
-                : `Synthesized from parent (${parentAnalysis.label}) + ${analysis.replyRelation}`,
-            reason: `Original: ${originalLabel} -> Synthesized: ${synthesizedLabel} (Parent: ${parentAnalysis.label}, Relation: ${analysis.replyRelation})`,
+                ? `[Thread Match] ${analysis.axisEvidence}`
+                : `Synthesized from parent (${parentAnalysis.label}) + ${relation}`,
+            reason: `Thread-aware synthesis: Parent[${parentAnalysis.stanceDirection}] + Relation[${relation}] -> Result[${finalDirection}]`,
         };
     });
 }
