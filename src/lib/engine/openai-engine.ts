@@ -16,6 +16,7 @@ import type {
     YouTubeVideo,
 } from "@/types";
 import type { AnalysisEngine } from "./types";
+import { retrieveContext, splitText } from "../llm/rag";
 import {
     SYSTEM_PROMPT,
     createBatchPrompt,
@@ -246,14 +247,45 @@ Provide a concise summary focusing on the main topic and key points.`;
     }
 
     async generateAxisProfile(video: YouTubeVideo): Promise<AxisProfile> {
-        const prompt = `Analyze this YouTube video and extract the main axis (論点) for stance analysis:
+        const summary = await this.generateContextSummary(video);
+        // RAG Implementation for Axis Profile
+        let contextText = `Title: ${video.title}\nDescription: ${video.description || ""}\nSummary: ${summary}`;
+        let retrievedSnippets: string[] = [];
 
-Title: ${video.title}
-Channel: ${video.channelName}
-Description: ${video.description?.slice(0, 500) || "N/A"}
-Transcript: ${video.transcript?.slice(0, 2000) || "N/A"}
+        // If transcript is available and long enough, use RAG
+        if (video.transcript && video.transcript.length > 1000) {
+            console.log("[OpenAI] Using RAG for Axis Generation...");
+            const chunks = splitText(video.transcript, 800, 100);
 
-Return JSON with this exact structure:
+            // Queries to extract key axis components
+            const queries = [
+                "What is the main argument and conclusion of this video?",
+                "Who is the creator criticizing or attacking? (Antagonists)",
+                "What values does the creator prioritize over others? (Value Hierarchy)"
+            ];
+
+            // Limit to 3 snippets per query to keep context manageable
+            for (const query of queries) {
+                const results = await retrieveContext(query, chunks, 3);
+                retrievedSnippets.push(...results.map(r => r.content));
+            }
+
+            // Deduplicate snippets
+            retrievedSnippets = [...new Set(retrievedSnippets)];
+
+            contextText += `\n\n### RELEVANT TRANSCRIPT EXCERPTS (EVIDENCE)\n${retrievedSnippets.join("\n---\n")}`;
+        } else {
+            // Fallback to simple slice for short videos
+            contextText += `\n\nTranscript Snippet: ${video.transcript?.slice(0, 10000) || "N/A"}`;
+        }
+
+        const prompt = `Based on the following video context, generate a detailed "Axis Profile" for Stance Analysis.
+CONTEXT:
+${contextText}
+
+OUTPUT FORMAT (JSON ONLY):
+{
+  "videoId": "${video.id}",
   "axisStatement": "Concise central claim (e.g., '座学より実践学習が重要か')",
   "axisType": "critic" | "education" | "other",
   "mainAxis": "The central claim or question",
@@ -301,6 +333,7 @@ Return JSON with this exact structure:
                 lexiconHints: parsed.lexiconHints || [],
                 antagonistAliases: parsed.antagonistAliases,
                 butMarkers: parsed.butMarkers,
+                evidenceSnippets: retrievedSnippets, // Store RAG evidence
                 caveats: parsed.caveats || [],
                 generatedAt: new Date().toISOString(),
             };

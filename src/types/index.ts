@@ -79,6 +79,7 @@ export interface AxisProfile {
   valuePriority: string[]; // Ordered list of values from highest to lowest priority
   antagonistAliases?: Record<string, string[]>; // e.g. {"antagonist_name": ["alias1", "alias2"]}
   butMarkers?: string[]; // e.g. ["but", "however", "although", "とは思うが"]
+  evidenceSnippets?: string[]; // RAG-retrieved evidence snippets
   caveats: string[]; // Specific instructions for edge cases
   generatedAt: string;
 }
